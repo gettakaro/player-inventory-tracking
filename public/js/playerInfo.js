@@ -111,6 +111,11 @@ const PlayerInfo = {
       ? `https://dashboard.takaro.io/player/${player.playerId}/info`
       : null;
 
+    // Get current color for player
+    const playerId = player.playerId;
+    const currentColor = playerId ? ColorUtils.getPlayerColor(playerId) : ColorUtils.offlineColor;
+    const hasCustomColor = playerId ? ColorUtils.hasCustomColor(playerId) : false;
+
     container.innerHTML = `
       <div class="stat-item">
         <span class="stat-label">Status</span>
@@ -118,6 +123,15 @@ const PlayerInfo = {
           <span class="online-status ${isOnline ? 'online' : 'offline'}">
             ${isOnline ? 'Online' : 'Offline'}
           </span>
+        </span>
+      </div>
+      <div class="stat-item stat-color">
+        <span class="stat-label">Path Color</span>
+        <span class="stat-value color-picker-row">
+          <input type="color" id="player-color-picker" value="${this.colorToHex(currentColor)}"
+                 title="Click to change player color" ${!playerId ? 'disabled' : ''} />
+          <button id="reset-color-btn" class="btn btn-sm" ${!hasCustomColor ? 'disabled' : ''}
+                  title="Reset to auto color">Reset</button>
         </span>
       </div>
       ${currency !== null ? `
@@ -148,6 +162,58 @@ const PlayerInfo = {
       </div>
       ` : ''}
     `;
+
+    // Attach color picker event handlers
+    this.attachColorPickerHandlers(playerId);
+  },
+
+  // Attach handlers for color picker
+  attachColorPickerHandlers(playerId) {
+    const colorPicker = document.getElementById('player-color-picker');
+    const resetBtn = document.getElementById('reset-color-btn');
+
+    if (colorPicker && playerId) {
+      colorPicker.addEventListener('change', (e) => {
+        ColorUtils.setCustomColor(playerId, e.target.value);
+        // Enable reset button
+        if (resetBtn) resetBtn.disabled = false;
+      });
+    }
+
+    if (resetBtn && playerId) {
+      resetBtn.addEventListener('click', () => {
+        ColorUtils.clearCustomColor(playerId);
+        // Update color picker to show auto color
+        if (colorPicker) {
+          colorPicker.value = this.colorToHex(ColorUtils.getAutoColor(playerId));
+        }
+        resetBtn.disabled = true;
+      });
+    }
+  },
+
+  // Convert HSL or any color to hex for color picker input
+  colorToHex(color) {
+    // If already hex, return it
+    if (color.startsWith('#')) return color;
+
+    // Create a temporary element to convert color
+    const temp = document.createElement('div');
+    temp.style.color = color;
+    document.body.appendChild(temp);
+    const computed = getComputedStyle(temp).color;
+    document.body.removeChild(temp);
+
+    // Parse rgb(r, g, b) format
+    const match = computed.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (match) {
+      const r = parseInt(match[1]).toString(16).padStart(2, '0');
+      const g = parseInt(match[2]).toString(16).padStart(2, '0');
+      const b = parseInt(match[3]).toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`;
+    }
+
+    return '#808080'; // fallback
   },
 
   formatPlaytime(seconds) {

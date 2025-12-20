@@ -1469,6 +1469,51 @@ body {
   color: var(--warning);
 }
 
+/* Color Picker Row */
+.color-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.color-picker-row input[type="color"] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.color-picker-row input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-picker-row input[type="color"]::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
+}
+
+.color-picker-row input[type="color"]:hover {
+  border-color: var(--primary);
+}
+
+.color-picker-row input[type="color"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stat-color {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stat-color .stat-label {
+  margin-bottom: 0;
+}
+
 .player-info-inventory {
   display: flex;
   gap: 1.5rem;

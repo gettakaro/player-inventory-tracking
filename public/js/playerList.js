@@ -239,11 +239,17 @@ const PlayerList = {
       const isChecked = this.isSelected(player.id) ? 'checked' : '';
       const loadingClass = (isOnline && !hasCoords) ? 'player-loading' : '';
 
+      // Get player color - online players get unique colors, offline are gray
+      const playerColor = isOnline && player.playerId
+        ? ColorUtils.getPlayerColor(player.playerId)
+        : ColorUtils.offlineColor;
+
       return `
         <li class="player-list-item ${loadingClass}" data-player-id="${player.id}">
           <div class="player-item-row">
             <input type="checkbox" class="player-select-checkbox"
                    data-player-id="${player.id}" ${isChecked} />
+            <span class="player-color-indicator" style="background-color: ${playerColor};"></span>
             <div class="player-item-info">
               <div class="player-item-name">${this.escapeHtml(player.name)}</div>
               <div class="player-item-coords">${coords}</div>

@@ -10,10 +10,13 @@ const Players = {
   refreshInterval: null,
   gameServerId: null,
 
-  // Create custom marker icons
-  createIcon(online) {
+  // Create custom marker icons with player-specific colors
+  createIcon(online, playerId = null) {
     const size = 24;
-    const color = online ? '#00d4ff' : '#6c757d';
+    // Online players get unique colors based on their ID, offline players are gray
+    const color = online && playerId
+      ? ColorUtils.getPlayerColor(playerId)
+      : ColorUtils.offlineColor;
 
     const personSvg = `
       <svg viewBox="0 0 24 24" width="${size}" height="${size}">
@@ -169,12 +172,12 @@ const Players = {
           // Update existing marker
           const marker = this.markers.get(player.id);
           marker.setLatLng(pos);
-          marker.setIcon(this.createIcon(isOnline));
+          marker.setIcon(this.createIcon(isOnline, player.playerId));
           marker.getPopup().setContent(this.createPopupContent(player));
         } else {
           // Create new marker
           const marker = L.marker(pos, {
-            icon: this.createIcon(isOnline)
+            icon: this.createIcon(isOnline, player.playerId)
           });
 
           marker.bindPopup(this.createPopupContent(player));

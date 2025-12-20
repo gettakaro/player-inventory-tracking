@@ -17,17 +17,9 @@ const History = {
     playbackMarkers: new Map()
   },
 
-  // Generate a color for each player
+  // Generate a color for each player (uses shared ColorUtils)
   getPlayerColor(playerId) {
-    // Hash the player ID to get a consistent color
-    let hash = 0;
-    const str = String(playerId);
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 70%, 50%)`;
+    return ColorUtils.getPlayerColor(playerId);
   },
 
   async loadPaths(gameServerId, startDate = null, endDate = null) {

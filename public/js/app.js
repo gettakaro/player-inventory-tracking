@@ -110,23 +110,8 @@ const App = {
       btn.classList.add('loading');
 
       try {
-        const { start, end } = TimeRange.getDateRange();
-        const results = await AreaSearch.search(this.gameServerId, start.toISOString(), end.toISOString());
-
-        // If we have results, auto-select found players in the sidebar
-        if (results.length > 0) {
-          const playerIds = [...new Set(results.map(r => r.playerId).filter(Boolean))];
-          if (playerIds.length > 0 && window.PlayerList) {
-            // Auto-select only the found players
-            PlayerList.selectOnly(playerIds);
-          }
-
-          // If "Show Paths" is checked, load and draw paths (will use selection filter)
-          if (document.getElementById('show-paths').checked) {
-            await History.loadPaths(this.gameServerId, start, end);
-            History.drawPaths();
-          }
-        }
+        // Trigger search - callback will handle results
+        await AreaSearch.triggerSearch();
       } finally {
         btn.disabled = false;
         btn.classList.remove('loading');
@@ -135,17 +120,7 @@ const App = {
 
     document.getElementById('clear-area-btn').addEventListener('click', () => {
       AreaSearch.clear();
-    });
-
-    document.getElementById('close-area-results-btn').addEventListener('click', () => {
-      AreaSearch.clear();
-    });
-
-    // Play Area button - starts playback for found players
-    document.getElementById('play-area-btn').addEventListener('click', () => {
-      if (window.History) {
-        History.startPlayback();
-      }
+      // AreaSearch.clear() now also clears PlayerList filter
     });
   },
 
@@ -156,6 +131,11 @@ const App = {
     if (History.isVisible) {
       await History.loadPaths(this.gameServerId, startDate, endDate);
       History.drawPaths();
+    }
+
+    // Refresh heatmap if visible
+    if (window.Heatmap && Heatmap.isVisible) {
+      await Heatmap.onTimeRangeChanged();
     }
 
     // Refresh player info panel inventory if open
@@ -177,8 +157,37 @@ const App = {
     await GameMap.init(gameServerId);
     this.isMapInitialized = true;
 
-    // Initialize area search after map is ready
-    AreaSearch.init(GameMap.map);
+    // Initialize area search after map is ready with callback
+    AreaSearch.init(GameMap.map, gameServerId, async (results) => {
+      if (results.length > 0) {
+        // Get unique player IDs
+        const playerIds = [...new Set(results.map(r => r.playerId).filter(Boolean))];
+
+        if (playerIds.length > 0 && window.PlayerList) {
+          // Filter player list to show only found players
+          PlayerList.setAreaFilter(playerIds);
+          // Also select them
+          PlayerList.selectOnly(playerIds);
+        }
+
+        // Load paths if checkbox is checked
+        if (document.getElementById('show-paths').checked) {
+          const { start, end } = TimeRange.getDateRange();
+          await History.loadPaths(this.gameServerId, start, end);
+          History.drawPaths();
+        }
+      } else {
+        // No results - clear any existing filter
+        if (window.PlayerList) {
+          PlayerList.clearAreaFilter();
+        }
+      }
+    });
+
+    // Initialize heatmap module
+    if (window.Heatmap) {
+      Heatmap.init(gameServerId);
+    }
 
     // Start player marker updates - fetch from API directly
     Players.startAutoRefresh(gameServerId, 30000);
@@ -189,6 +198,11 @@ const App = {
     History.clearPaths();
     History.stopPlayback();
     AreaSearch.clear();
+
+    // Clear heatmap
+    if (window.Heatmap) {
+      Heatmap.clear();
+    }
 
     if (this.isMapInitialized) {
       GameMap.destroy();

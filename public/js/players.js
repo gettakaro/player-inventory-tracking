@@ -144,13 +144,14 @@ const Players = {
       let offlineCount = 0;
 
       for (const player of players) {
-        // Skip if coordinates are invalid
-        if (player.x === null || player.z === null) continue;
-
         const isOnline = player.online === 1 || player.online === true;
 
+        // Count all players regardless of coordinates
         if (isOnline) onlineCount++;
         else offlineCount++;
+
+        // Skip map marker if coordinates are invalid (player still appears in list)
+        if (player.x === null || player.z === null) continue;
 
         // Skip based on visibility settings
         if (isOnline && !this.showOnline) continue;

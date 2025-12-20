@@ -7,9 +7,13 @@ const AreaSearch = {
   currentShape: null,
   drawingEnabled: false,
   currentDrawHandler: null,
+  gameServerId: null,
+  onSearchComplete: null,
 
-  init(map) {
+  init(map, gameServerId, onSearchComplete) {
     this.map = map;
+    this.gameServerId = gameServerId;
+    this.onSearchComplete = onSearchComplete;
     this.drawnItems = new L.FeatureGroup();
     this.resultsLayer = new L.FeatureGroup();
     map.addLayer(this.drawnItems);
@@ -55,7 +59,7 @@ const AreaSearch = {
     this.drawingEnabled = false;
   },
 
-  onShapeCreated(e) {
+  async onShapeCreated(e) {
     // Clear previous shape
     this.drawnItems.clearLayers();
     this.currentShape = e.layer;
@@ -67,6 +71,20 @@ const AreaSearch = {
     // Enable search button
     document.getElementById('area-search-btn').disabled = false;
     this.updateButtonStates();
+
+    // Auto-trigger search
+    await this.triggerSearch();
+  },
+
+  async triggerSearch() {
+    if (!this.gameServerId || !this.currentShape) return;
+
+    const { start, end } = TimeRange.getDateRange();
+    const results = await this.search(this.gameServerId, start.toISOString(), end.toISOString());
+
+    if (this.onSearchComplete) {
+      this.onSearchComplete(results);
+    }
   },
 
   async search(gameServerId, startDate, endDate) {
@@ -119,109 +137,12 @@ const AreaSearch = {
   },
 
   displayResults(players) {
-    // Clear previous results
+    // Clear previous results markers
     this.resultsLayer.clearLayers();
 
-    // Show results panel
-    const panel = document.getElementById('area-results-panel');
-    const countEl = document.getElementById('area-results-count');
-    const listEl = document.getElementById('area-results-list');
-
-    panel.style.display = 'block';
-    listEl.innerHTML = '';
-
-    // Group players by playerId (deduplicate multiple hits)
-    const playerMap = new Map();
-    players.forEach(p => {
-      const key = p.playerId || p.id;
-      if (!playerMap.has(key)) {
-        // Use playerName from API (enriched by backend)
-        const name = p.playerName || p.name || 'Unknown';
-        playerMap.set(key, {
-          ...p,
-          name: name,
-          hits: 1,
-          positions: [{ x: p.x, z: p.z, timestamp: p.createdAt || p.timestamp }]
-        });
-      } else {
-        const existing = playerMap.get(key);
-        existing.hits++;
-        existing.positions.push({ x: p.x, z: p.z, timestamp: p.createdAt || p.timestamp });
-      }
-    });
-
-    // Update count with unique players
-    countEl.textContent = `${playerMap.size} player${playerMap.size !== 1 ? 's' : ''} found (${players.length} positions)`;
-
-    // Create list items and markers
-    playerMap.forEach((player, key) => {
-      // Create list item
-      const li = document.createElement('li');
-      li.className = 'area-result-item';
-
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'player-name';
-      nameSpan.textContent = player.name;
-
-      const hitsSpan = document.createElement('span');
-      hitsSpan.className = 'player-hits';
-      hitsSpan.textContent = `${player.hits} hit${player.hits !== 1 ? 's' : ''}`;
-
-      li.appendChild(nameSpan);
-      li.appendChild(hitsSpan);
-
-      // Click to highlight on map
-      li.addEventListener('click', () => this.highlightPlayer(player));
-
-      listEl.appendChild(li);
-
-      // Add marker for most recent position
-      if (player.positions.length > 0) {
-        const lastPos = player.positions[player.positions.length - 1];
-        if (lastPos.x !== undefined && lastPos.z !== undefined) {
-          const marker = L.circleMarker(
-            GameMap.gameToLatLng(lastPos.x, lastPos.z),
-            {
-              radius: 6,
-              fillColor: '#ff7800',
-              color: '#fff',
-              weight: 2,
-              fillOpacity: 0.8
-            }
-          );
-
-          marker.bindPopup(`
-            <strong>${player.name}</strong><br>
-            Position: ${Math.round(lastPos.x)}, ${Math.round(lastPos.z)}<br>
-            Hits: ${player.hits}
-          `);
-
-          this.resultsLayer.addLayer(marker);
-        }
-      }
-    });
-  },
-
-  highlightPlayer(player) {
-    if (player.positions && player.positions.length > 0) {
-      const lastPos = player.positions[player.positions.length - 1];
-      if (lastPos.x !== undefined && lastPos.z !== undefined) {
-        const latLng = GameMap.gameToLatLng(lastPos.x, lastPos.z);
-        this.map.setView(latLng, Math.max(this.map.getZoom(), 3));
-
-        // Flash effect
-        this.resultsLayer.eachLayer(layer => {
-          if (layer instanceof L.CircleMarker) {
-            const pos = GameMap.latLngToGame(layer.getLatLng());
-            if (Math.abs(pos.x - lastPos.x) < 1 && Math.abs(pos.z - lastPos.z) < 1) {
-              layer.openPopup();
-              layer.setStyle({ fillColor: '#ffff00' });
-              setTimeout(() => layer.setStyle({ fillColor: '#ff7800' }), 1000);
-            }
-          }
-        });
-      }
-    }
+    // No longer show separate popup panel - results handled via callback to PlayerList
+    // Just return the players for the callback to process
+    return players;
   },
 
   clear() {
@@ -230,11 +151,14 @@ const AreaSearch = {
     this.resultsLayer.clearLayers();
     this.currentShape = null;
 
-    // Hide results panel
-    document.getElementById('area-results-panel').style.display = 'none';
     document.getElementById('area-search-btn').disabled = true;
 
     this.updateButtonStates();
+
+    // Also clear player list filter
+    if (window.PlayerList) {
+      PlayerList.clearAreaFilter();
+    }
   },
 
   updateButtonStates() {

@@ -47,6 +47,33 @@
           </label>
         </div>
 
+        <div class="control-group heatmap-controls">
+          <label>
+            <input type="checkbox" id="show-heatmap" />
+            <span class="marker-indicator heatmap"></span> Heatmap
+          </label>
+          <select id="heatmap-type" disabled>
+            <option value="activity">Activity</option>
+            <option value="deaths">Deaths</option>
+            <option value="realtime">Real-time</option>
+          </select>
+          <label class="heatmap-filter-toggle" style="display: none;">
+            <input type="checkbox" id="heatmap-filter-selection" />
+            Selected only
+          </label>
+        </div>
+
+        <div id="heatmap-settings" class="heatmap-settings" style="display: none;">
+          <label class="slider-label">
+            Radius
+            <input type="range" id="heatmap-radius" min="10" max="50" value="25" />
+          </label>
+          <label class="slider-label">
+            Blur
+            <input type="range" id="heatmap-blur" min="5" max="30" value="15" />
+          </label>
+        </div>
+
         <div class="control-group date-filter">
           <div class="time-range-selector">
             <select id="time-range-preset" title="Select time range">
@@ -171,24 +198,7 @@
         </div>
       </div>
 
-      <!-- Area Search Results Panel -->
-      <div id="area-results-panel" class="area-results-panel" style="display: none;">
-        <div class="area-results-header">
-          <h3>Area Search Results</h3>
-          <div class="area-results-actions">
-            <button id="play-area-btn" class="btn btn-icon" title="Play movement for found players">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5,3 19,12 5,21"/>
-              </svg>
-            </button>
-            <button id="close-area-results-btn" class="btn btn-icon">&times;</button>
-          </div>
-        </div>
-        <div class="area-results-stats">
-          <span id="area-results-count">0 players found</span>
-        </div>
-        <ul id="area-results-list" class="area-results-list"></ul>
-      </div>
+      <!-- Area Search Results Panel - removed, now uses player list filter -->
 
       <!-- Player List Panel -->
       <div id="player-list-panel" class="player-list-panel">
@@ -256,11 +266,13 @@
   <!-- Scripts -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/map.js"></script>
   <script src="js/players.js"></script>
   <script src="js/history.js"></script>
+  <script src="js/heatmap.js"></script>
   <script src="js/areaSearch.js"></script>
   <script src="js/playerList.js"></script>
   <script src="js/playerInfo.js"></script>

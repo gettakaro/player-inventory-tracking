@@ -65,14 +65,15 @@ const History = {
     // Clear existing path layers
     this.clearPaths();
 
-    // Get selected players from PlayerList if available
-    const selectedPlayers = window.PlayerList ? PlayerList.selectedPlayers : null;
+    // Get selected player Takaro IDs from PlayerList if available
+    // Note: paths use playerId (Player UUID) as keys, but selectedPlayers uses POG IDs
+    const selectedTakaroIds = window.PlayerList ? PlayerList.getSelectedTakaroIds() : null;
 
     for (const [playerId, data] of Object.entries(this.paths)) {
       if (!data.points || data.points.length < 2) continue;
 
       // Skip if player is not selected (when selection filtering is active)
-      if (selectedPlayers && selectedPlayers.size > 0 && !selectedPlayers.has(String(playerId))) {
+      if (selectedTakaroIds && selectedTakaroIds.size > 0 && !selectedTakaroIds.has(String(playerId))) {
         continue;
       }
 
@@ -156,6 +157,9 @@ const History = {
     // Hide regular markers
     Players.clear();
 
+    // Draw paths for selected players so they're visible during playback
+    this.drawPaths();
+
     // Show playback controls
     document.getElementById('playback-controls').style.display = 'flex';
 
@@ -181,6 +185,11 @@ const History = {
       marker.remove();
     }
     this.playbackState.playbackMarkers.clear();
+
+    // Clear paths if "Show Paths" is not checked
+    if (!document.getElementById('show-paths').checked) {
+      this.clearPaths();
+    }
 
     // Hide controls
     document.getElementById('playback-controls').style.display = 'none';

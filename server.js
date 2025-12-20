@@ -208,6 +208,28 @@ app.get('/api/movement-paths', requireAuth, async (req, res) => {
   }
 });
 
+// ============== EVENTS ROUTES ==============
+
+// Get death events
+app.get('/api/events/deaths', requireAuth, async (req, res) => {
+  const { gameServerId, startDate, endDate } = req.query;
+
+  if (!gameServerId) {
+    return res.status(400).json({ error: 'gameServerId required' });
+  }
+
+  try {
+    const events = await req.session.takaroClient.getDeathEvents(
+      gameServerId,
+      startDate,
+      endDate
+    );
+    res.json({ data: events });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============== AREA SEARCH ROUTES ==============
 
 // Helper function to enrich tracking results with player names

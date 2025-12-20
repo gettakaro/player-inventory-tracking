@@ -7,6 +7,8 @@ const PlayerList = {
   selectedPlayers: new Set(),  // Track selected player IDs
   hasInitializedSelection: false,  // Track if we've done initial selection
   collapsedGroups: { online: false, offline: false },  // Track collapsed state
+  areaFilterActive: false,  // Track if area filter is active
+  areaFilterPlayerIds: new Set(),  // Player IDs from area search
 
   init() {
     this.setupEventListeners();
@@ -147,8 +149,19 @@ const PlayerList = {
     const onlineList = document.getElementById('online-players-list');
     const offlineList = document.getElementById('offline-players-list');
 
-    // Filter players by search term
-    const filteredPlayers = this.players.filter(player => {
+    // Start with all players
+    let filteredPlayers = this.players;
+
+    // Apply area filter if active
+    if (this.areaFilterActive) {
+      filteredPlayers = filteredPlayers.filter(p =>
+        this.areaFilterPlayerIds.has(String(p.id)) ||
+        this.areaFilterPlayerIds.has(String(p.playerId))
+      );
+    }
+
+    // Then filter by search term
+    filteredPlayers = filteredPlayers.filter(player => {
       if (!this.searchTerm) return true;
       return player.name.toLowerCase().includes(this.searchTerm);
     });
@@ -218,14 +231,16 @@ const PlayerList = {
         ? this.formatLastSeen(player.lastSeen)
         : 'Now';
 
-      const coords = (player.x !== null && player.z !== null)
+      const hasCoords = player.x !== null && player.z !== null;
+      const coords = hasCoords
         ? `X: ${Math.round(player.x)}, Z: ${Math.round(player.z)}`
-        : 'Unknown location';
+        : (isOnline ? 'Loading...' : 'Unknown location');
 
       const isChecked = this.isSelected(player.id) ? 'checked' : '';
+      const loadingClass = (isOnline && !hasCoords) ? 'player-loading' : '';
 
       return `
-        <li class="player-list-item" data-player-id="${player.id}">
+        <li class="player-list-item ${loadingClass}" data-player-id="${player.id}">
           <div class="player-item-row">
             <input type="checkbox" class="player-select-checkbox"
                    data-player-id="${player.id}" ${isChecked} />
@@ -319,6 +334,8 @@ const PlayerList = {
     this.searchTerm = '';
     this.selectedPlayers.clear();
     this.hasInitializedSelection = false;  // Reset so next login selects all
+    this.areaFilterActive = false;
+    this.areaFilterPlayerIds.clear();
     const searchInput = document.getElementById('player-search');
     if (searchInput) {
       searchInput.value = '';
@@ -327,6 +344,7 @@ const PlayerList = {
     if (topSearchInput) {
       topSearchInput.value = '';
     }
+    this.updateFilterIndicator();
     this.render();
   },
 
@@ -386,6 +404,10 @@ const PlayerList = {
     if (window.History && History.isVisible) {
       History.drawPaths();
     }
+    // Refresh heatmap if filtering by selection
+    if (window.Heatmap) {
+      Heatmap.onPlayerSelectionChanged();
+    }
   },
 
   // Select only specific players (used by area search)
@@ -409,6 +431,71 @@ const PlayerList = {
 
     this.render();
     this.notifySelectionChange();
+  },
+
+  // Get Takaro playerIds (UUIDs) for selected players
+  // selectedPlayers uses POG IDs (PlayerOnGameServer), but paths use playerId (Player UUID)
+  getSelectedTakaroIds() {
+    const takaroIds = new Set();
+    for (const pogId of this.selectedPlayers) {
+      const player = this.players.find(p => String(p.id) === pogId);
+      if (player && player.playerId) {
+        takaroIds.add(String(player.playerId));
+      }
+    }
+    return takaroIds;
+  },
+
+  // Area filter methods - filter the player list to only show players from area search
+  setAreaFilter(playerIds) {
+    this.areaFilterActive = true;
+    this.areaFilterPlayerIds.clear();
+    playerIds.forEach(id => this.areaFilterPlayerIds.add(String(id)));
+
+    this.updateFilterIndicator();
+    this.render();
+  },
+
+  clearAreaFilter() {
+    this.areaFilterActive = false;
+    this.areaFilterPlayerIds.clear();
+    this.updateFilterIndicator();
+    this.render();
+  },
+
+  updateFilterIndicator() {
+    let indicator = document.getElementById('area-filter-indicator');
+
+    if (this.areaFilterActive) {
+      if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'area-filter-indicator';
+        indicator.className = 'area-filter-indicator';
+        const header = document.querySelector('.player-list-header');
+        if (header) {
+          header.appendChild(indicator);
+        }
+      }
+
+      indicator.innerHTML = `
+        <span>Area filter: ${this.areaFilterPlayerIds.size} players</span>
+        <button id="clear-area-filter-btn" class="btn btn-sm">Clear</button>
+      `;
+      indicator.style.display = 'flex';
+
+      // Attach click handler
+      const clearBtn = document.getElementById('clear-area-filter-btn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          this.clearAreaFilter();
+          if (window.AreaSearch) {
+            AreaSearch.clear();
+          }
+        });
+      }
+    } else if (indicator) {
+      indicator.style.display = 'none';
+    }
   }
 };
 

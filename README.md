@@ -1,4 +1,4 @@
-# Takaro 7D2D Player Map
+# Takaro Player Inventory Tracking
 
 A standalone web application for 7 Days to Die server admins to visualize player positions on their game map, with movement history tracking and playback.
 
@@ -22,7 +22,8 @@ A standalone web application for 7 Days to Die server admins to visualize player
 
 1. Clone or download this repository:
    ```bash
-   cd takaro-player-map
+   git clone https://github.com/gettakaro/player-inventory-tracking.git
+   cd player-inventory-tracking
    ```
 
 2. Install dependencies:
@@ -188,4 +189,3 @@ MIT
 
 - Uses [Leaflet.js](https://leafletjs.com/) for map rendering
 - Built for [Takaro](https://takaro.io/) game server management platform
-- Inspired by the [Takaro Inventory Tracking](https://github.com/mad-001/Takaro-Inventory-Tracking) project

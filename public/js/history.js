@@ -146,8 +146,12 @@ const History = {
     this.playbackState.endTime = maxTime;
     this.playbackState.currentTime = minTime;
 
-    // Hide regular markers
-    Players.clear();
+    // Hide regular markers (but keep player data/selection intact)
+    Players.stopAutoRefresh();
+    for (const marker of Players.markers.values()) {
+      marker.remove();
+    }
+    Players.markers.clear();
 
     // Draw paths for selected players so they're visible during playback
     this.drawPaths();
@@ -254,9 +258,22 @@ const History = {
 
     if (!GameMap.map) return;
 
+    // Get selected player Takaro IDs (same filtering as drawPaths)
+    const selectedTakaroIds = window.PlayerList ? PlayerList.getSelectedTakaroIds() : null;
+
     // For each player, find their position at current time
     for (const [playerId, data] of Object.entries(this.paths)) {
       if (!data.points) continue;
+
+      // Skip if player is not selected (same filtering as drawPaths)
+      if (selectedTakaroIds && selectedTakaroIds.size > 0 && !selectedTakaroIds.has(String(playerId))) {
+        // Remove existing playback marker if player was deselected during playback
+        if (this.playbackState.playbackMarkers.has(playerId)) {
+          this.playbackState.playbackMarkers.get(playerId).remove();
+          this.playbackState.playbackMarkers.delete(playerId);
+        }
+        continue;
+      }
 
       // Find the point closest to current time (but not after)
       let bestPoint = null;

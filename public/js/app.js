@@ -127,6 +127,16 @@ const App = {
   async onTimeRangeChange(startDate, endDate, presetId) {
     if (!this.gameServerId) return;
 
+    // Refresh player list with new time filter
+    if (window.PlayerList) {
+      PlayerList.onTimeRangeChange();
+    }
+
+    // Refresh map markers with new time filter
+    if (window.Players) {
+      Players.refreshVisibility();
+    }
+
     // Reload paths if they're visible
     if (History.isVisible) {
       await History.loadPaths(this.gameServerId, startDate, endDate);

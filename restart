@@ -1,0 +1,5 @@
+#!/bin/bash
+cd "$(dirname "$0")"
+docker-compose up -d
+pkill -f "node server.js" 2>/dev/null
+node server.js

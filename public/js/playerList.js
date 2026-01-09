@@ -9,6 +9,7 @@ const PlayerList = {
   collapsedGroups: { online: false, offline: false },  // Track collapsed state
   areaFilterActive: false,  // Track if area filter is active
   areaFilterPlayerIds: new Set(),  // Player IDs from area search
+  timeFilterEnabled: true,  // Filter offline players by time range
 
   init() {
     this.setupEventListeners();
@@ -151,6 +152,26 @@ const PlayerList = {
 
     // Start with all players
     let filteredPlayers = this.players;
+
+    // Apply time filter based on lastSeen (if TimeRange is available)
+    if (this.timeFilterEnabled && window.TimeRange) {
+      const { start, end } = TimeRange.getDateRange();
+      const startTime = start.getTime();
+      const endTime = end.getTime();
+
+      const beforeCount = filteredPlayers.length;
+      filteredPlayers = filteredPlayers.filter(player => {
+        // Always show online players regardless of time filter
+        const isOnline = player.online === 1 || player.online === true;
+        if (isOnline) return true;
+
+        // For offline players, filter by lastSeen within time range
+        if (!player.lastSeen) return false;
+        const lastSeenTime = new Date(player.lastSeen).getTime();
+        return lastSeenTime >= startTime && lastSeenTime <= endTime;
+      });
+      console.log(`[PlayerList] Time filter: ${beforeCount} → ${filteredPlayers.length} players (range: ${start.toISOString()} to ${end.toISOString()})`);
+    }
 
     // Apply area filter if active
     if (this.areaFilterActive) {
@@ -439,15 +460,32 @@ const PlayerList = {
     this.notifySelectionChange();
   },
 
-  // Get Takaro playerIds (UUIDs) for selected players
+  // Get Takaro playerIds (UUIDs) for selected players that pass current filters
   // selectedPlayers uses POG IDs (PlayerOnGameServer), but paths use playerId (Player UUID)
   getSelectedTakaroIds() {
     const takaroIds = new Set();
+
+    // Get time range for filtering
+    let startTime = null;
+    let endTime = null;
+    if (this.timeFilterEnabled && window.TimeRange) {
+      const { start, end } = TimeRange.getDateRange();
+      startTime = start.getTime();
+      endTime = end.getTime();
+    }
+
     for (const pogId of this.selectedPlayers) {
       const player = this.players.find(p => String(p.id) === pogId);
-      if (player && player.playerId) {
-        takaroIds.add(String(player.playerId));
+      if (!player || !player.playerId) continue;
+
+      // Apply time filter - online players always pass, offline must be in range
+      const isOnline = player.online === 1 || player.online === true;
+      if (!isOnline && startTime && endTime && player.lastSeen) {
+        const lastSeenTime = new Date(player.lastSeen).getTime();
+        if (lastSeenTime < startTime || lastSeenTime > endTime) continue;
       }
+
+      takaroIds.add(String(player.playerId));
     }
     return takaroIds;
   },
@@ -467,6 +505,12 @@ const PlayerList = {
     this.areaFilterPlayerIds.clear();
     this.updateFilterIndicator();
     this.render();
+  },
+
+  // Called when time range changes - re-render with new filter
+  onTimeRangeChange() {
+    this.render();
+    this.notifySelectionChange();
   },
 
   updateFilterIndicator() {

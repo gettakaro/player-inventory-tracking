@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs').promises;
 
 const {
   createClient: createTakaroClient,
@@ -11,6 +12,8 @@ const {
   isServiceMode
 } = require('./lib/takaro');
 
+const { cache } = require('./lib/cache');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -18,6 +21,23 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Debug timing middleware - logs all API requests with timing
+app.use('/api', (req, res, next) => {
+  const start = Date.now();
+  const reqId = Math.random().toString(36).substr(2, 6);
+
+  console.log(`[${reqId}] → ${req.method} ${req.originalUrl}`);
+
+  // Capture response finish
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const emoji = duration > 2000 ? '🐢' : duration > 500 ? '⚠️' : '✓';
+    console.log(`[${reqId}] ${emoji} ${req.method} ${req.originalUrl} - ${duration}ms (${res.statusCode})`);
+  });
+
+  next();
+});
 
 // Session storage (in-memory) - simplified for service mode only
 let serviceSession = null;
@@ -83,15 +103,40 @@ app.get('/api/map-info/:gameServerId', requireAuth, async (req, res) => {
 
 // ============== MAP TILE PROXY (from Takaro) ==============
 
+// Tile cache directory
+const TILE_CACHE_DIR = path.join(__dirname, 'cache', 'tiles');
+
 app.get('/api/map/:gameServerId/:z/:x/:y.png', requireAuth, async (req, res) => {
   const { gameServerId, z, x, y } = req.params;
+  const takaroX = parseInt(x);
+  const takaroY = parseInt(y);
+
+  // Disk cache path
+  const tileCachePath = path.join(TILE_CACHE_DIR, gameServerId, z, `${takaroX}_${takaroY}.png`);
 
   try {
-    const takaroX = parseInt(x);
-    const takaroY = parseInt(y);
+    // Check disk cache first
+    try {
+      const cachedTile = await fs.readFile(tileCachePath);
+      console.log(`  ⚡ TILE CACHE HIT: ${z}/${takaroX}/${takaroY}`);
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'public, max-age=3600');
+      return res.send(cachedTile);
+    } catch {
+      // Not in cache, fetch from Takaro
+    }
+
     const tileData = await req.session.takaroClient.getMapTile(gameServerId, z, takaroX, takaroY);
 
     if (tileData) {
+      // Save to disk cache
+      try {
+        await fs.mkdir(path.dirname(tileCachePath), { recursive: true });
+        await fs.writeFile(tileCachePath, Buffer.from(tileData));
+      } catch (cacheErr) {
+        console.warn('Failed to cache tile:', cacheErr.message);
+      }
+
       res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'public, max-age=3600');
       res.send(Buffer.from(tileData));
@@ -331,6 +376,9 @@ app.post('/api/players/area/radius', requireAuth, async (req, res) => {
 // ============== START SERVER ==============
 
 async function startServer() {
+  // Initialize cache (Redis or fallback to memory)
+  await cache.connect();
+
   // Initialize service client (auto-login)
   await initServiceClient();
 

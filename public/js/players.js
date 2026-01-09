@@ -146,6 +146,15 @@ const Players = {
       let onlineCount = 0;
       let offlineCount = 0;
 
+      // Get time range for filtering offline players
+      let startTime = null;
+      let endTime = null;
+      if (window.TimeRange) {
+        const { start, end } = TimeRange.getDateRange();
+        startTime = start.getTime();
+        endTime = end.getTime();
+      }
+
       for (const player of players) {
         const isOnline = player.online === 1 || player.online === true;
 
@@ -159,6 +168,12 @@ const Players = {
         // Skip based on visibility settings
         if (isOnline && !this.showOnline) continue;
         if (!isOnline && !this.showOffline) continue;
+
+        // Skip offline players outside time range
+        if (!isOnline && startTime && endTime && player.lastSeen) {
+          const lastSeenTime = new Date(player.lastSeen).getTime();
+          if (lastSeenTime < startTime || lastSeenTime > endTime) continue;
+        }
 
         // Skip if player is not selected (only when selections exist)
         if (this.selectedPlayers.size > 0 && !this.selectedPlayers.has(String(player.id))) {

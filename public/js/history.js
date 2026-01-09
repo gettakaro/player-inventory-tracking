@@ -258,16 +258,15 @@ const History = {
 
     if (!GameMap.map) return;
 
-    // Get selected player Takaro IDs (same filtering as drawPaths)
-    const selectedTakaroIds = window.PlayerList ? PlayerList.getSelectedTakaroIds() : null;
-
     // For each player, find their position at current time
     for (const [playerId, data] of Object.entries(this.paths)) {
-      if (!data.points) continue;
+      // Skip players with no path data (same check as drawPaths)
+      if (!data.points || data.points.length < 2) continue;
 
-      // Skip if player is not selected (same filtering as drawPaths)
-      if (selectedTakaroIds && selectedTakaroIds.size > 0 && !selectedTakaroIds.has(String(playerId))) {
-        // Remove existing playback marker if player was deselected during playback
+      // Only animate players who have a visible path drawn on the map
+      // This ensures playback matches what the user sees in terms of paths
+      if (!this.pathLayers.has(playerId)) {
+        // Remove existing playback marker if player's path is not visible
         if (this.playbackState.playbackMarkers.has(playerId)) {
           this.playbackState.playbackMarkers.get(playerId).remove();
           this.playbackState.playbackMarkers.delete(playerId);

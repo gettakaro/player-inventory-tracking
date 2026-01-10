@@ -38,7 +38,7 @@ const API = {
   async request(url, options = {}) {
     const headers = {
       'Content-Type': 'application/json',
-      ...options.headers
+      ...options.headers,
     };
 
     if (this.sessionId) {
@@ -47,7 +47,7 @@ const API = {
 
     const response = await fetch(url, {
       ...options,
-      headers
+      headers,
     });
 
     if (response.status === 401) {
@@ -99,7 +99,7 @@ const API = {
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
-    if (params.toString()) url += '?' + params.toString();
+    if (params.toString()) url += `?${params.toString()}`;
 
     const data = await this.request(url);
     return data.data || [];
@@ -111,7 +111,7 @@ const API = {
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
-    if (params.toString()) url += '?' + params.toString();
+    if (params.toString()) url += `?${params.toString()}`;
 
     const data = await this.request(url);
     return data.data || [];
@@ -140,8 +140,8 @@ const API = {
         minZ: bounds.minZ,
         maxZ: bounds.maxZ,
         startDate: startDate || undefined,
-        endDate: endDate || undefined
-      })
+        endDate: endDate || undefined,
+      }),
     });
     return data.data || [];
   },
@@ -156,8 +156,8 @@ const API = {
         z: center.z,
         radius,
         startDate: startDate || undefined,
-        endDate: endDate || undefined
-      })
+        endDate: endDate || undefined,
+      }),
     });
     return data.data || [];
   },
@@ -170,7 +170,7 @@ const API = {
 
     const data = await this.request(url);
     return data.data || [];
-  }
+  },
 };
 
 window.API = API;

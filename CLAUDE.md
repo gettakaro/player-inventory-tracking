@@ -30,3 +30,29 @@ The `.env` file contains API credentials and is not tracked by git. When creatin
 ```bash
 cp /home/hendrik/playerTracking/takaro-player-map/.env ../new-worktree/
 ```
+
+## Code Quality
+
+This project uses Biome for linting and formatting. Always check code quality before committing.
+
+### Running Code Quality Checks
+
+Before committing changes:
+```bash
+npm run check        # Check for linting and formatting issues
+```
+
+Auto-fix issues:
+```bash
+npm run check:fix    # Automatically fix linting and formatting issues
+```
+
+### CI Enforcement
+
+The CI pipeline runs `npm run ci:check` on all pull requests. Code that doesn't pass linting will fail the CI build.
+
+### Best Practices
+
+- Run `npm run check:fix` before committing to catch issues early
+- If CI fails on linting, run `npm run check:fix` locally and push the fixes
+- Don't commit code with linting errors - fix them first

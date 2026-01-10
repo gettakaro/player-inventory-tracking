@@ -2,15 +2,10 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-const fs = require('fs').promises;
+const path = require('node:path');
+const fs = require('node:fs').promises;
 
-const {
-  createClient: createTakaroClient,
-  initServiceClient,
-  getServiceClient,
-  isServiceMode
-} = require('./lib/takaro');
+const { createClient: createTakaroClient, initServiceClient, isServiceMode } = require('./lib/takaro');
 
 const { cache } = require('./lib/cache');
 
@@ -48,7 +43,9 @@ const SERVICE_SESSION_ID = 'service-session';
 // Auth middleware - service mode only
 function requireAuth(req, res, next) {
   if (!isServiceMode() || !serviceSession) {
-    return res.status(401).json({ error: 'Service not configured. Set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables.' });
+    return res.status(401).json({
+      error: 'Service not configured. Set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables.',
+    });
   }
 
   req.session = serviceSession;
@@ -59,7 +56,7 @@ function requireAuth(req, res, next) {
 // ============== AUTH ROUTES ==============
 
 // Check auth status - tells frontend if service mode is active
-app.get('/api/auth/status', (req, res) => {
+app.get('/api/auth/status', (_req, res) => {
   const serviceMode = isServiceMode();
   const domain = process.env.TAKARO_DOMAIN || null;
 
@@ -67,7 +64,7 @@ app.get('/api/auth/status', (req, res) => {
     serviceMode,
     authenticated: serviceMode,
     domain,
-    sessionId: serviceMode ? SERVICE_SESSION_ID : null
+    sessionId: serviceMode ? SERVICE_SESSION_ID : null,
   });
 });
 
@@ -93,8 +90,8 @@ app.get('/api/map-info/:gameServerId', requireAuth, async (req, res) => {
       data: {
         worldSize: mapInfo.mapSizeX || 8192,
         maxZoom: mapInfo.maxZoom || 4,
-        ...mapInfo
-      }
+        ...mapInfo,
+      },
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -108,8 +105,8 @@ const TILE_CACHE_DIR = path.join(__dirname, 'cache', 'tiles');
 
 app.get('/api/map/:gameServerId/:z/:x/:y.png', requireAuth, async (req, res) => {
   const { gameServerId, z, x, y } = req.params;
-  const takaroX = parseInt(x);
-  const takaroY = parseInt(y);
+  const takaroX = parseInt(x, 10);
+  const takaroY = parseInt(y, 10);
 
   // Disk cache path
   const tileCachePath = path.join(TILE_CACHE_DIR, gameServerId, z, `${takaroX}_${takaroY}.png`);
@@ -172,11 +169,7 @@ app.get('/api/inventory/:playerId', requireAuth, async (req, res) => {
   const { startDate, endDate } = req.query;
 
   try {
-    const inventory = await req.session.takaroClient.getPlayerInventoryHistory(
-      playerId,
-      startDate,
-      endDate
-    );
+    const inventory = await req.session.takaroClient.getPlayerInventoryHistory(playerId, startDate, endDate);
     res.json({ data: inventory });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -185,15 +178,11 @@ app.get('/api/inventory/:playerId', requireAuth, async (req, res) => {
 
 // Get player movement history (from Takaro tracking API)
 app.get('/api/player-history/:gameServerId/:playerId', requireAuth, async (req, res) => {
-  const { gameServerId, playerId } = req.params;
+  const { gameServerId: _gameServerId, playerId } = req.params;
   const { startDate, endDate } = req.query;
 
   try {
-    const history = await req.session.takaroClient.getPlayerMovementHistory(
-      playerId,
-      startDate,
-      endDate
-    );
+    const history = await req.session.takaroClient.getPlayerMovementHistory(playerId, startDate, endDate);
     res.json({ data: history });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -210,11 +199,7 @@ app.get('/api/movement-paths', requireAuth, async (req, res) => {
 
   try {
     // Get all movement data from Takaro
-    const results = await req.session.takaroClient.getMovementPaths(
-      gameServerId,
-      startDate,
-      endDate
-    );
+    const results = await req.session.takaroClient.getMovementPaths(gameServerId, startDate, endDate);
 
     // Enrich with player names
     const enrichedResults = await enrichWithPlayerNames(req.session.takaroClient, results);
@@ -228,7 +213,7 @@ app.get('/api/movement-paths', requireAuth, async (req, res) => {
       if (!paths[playerId]) {
         paths[playerId] = {
           name: point.playerName || 'Unknown',
-          points: []
+          points: [],
         };
       }
 
@@ -236,15 +221,13 @@ app.get('/api/movement-paths', requireAuth, async (req, res) => {
         x: point.x,
         y: point.y,
         z: point.z,
-        timestamp: point.createdAt || point.timestamp
+        timestamp: point.createdAt || point.timestamp,
       });
     }
 
     // Sort points by timestamp for each player
     for (const playerId in paths) {
-      paths[playerId].points.sort((a, b) =>
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
+      paths[playerId].points.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }
 
     res.json({ data: paths });
@@ -264,11 +247,7 @@ app.get('/api/events/deaths', requireAuth, async (req, res) => {
   }
 
   try {
-    const events = await req.session.takaroClient.getDeathEvents(
-      gameServerId,
-      startDate,
-      endDate
-    );
+    const events = await req.session.takaroClient.getDeathEvents(gameServerId, startDate, endDate);
     res.json({ data: events });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -282,7 +261,7 @@ async function enrichWithPlayerNames(takaroClient, trackingResults) {
   if (!trackingResults || trackingResults.length === 0) return trackingResults;
 
   // Get unique player IDs
-  const playerIds = [...new Set(trackingResults.map(r => r.playerId).filter(Boolean))];
+  const playerIds = [...new Set(trackingResults.map((r) => r.playerId).filter(Boolean))];
 
   if (playerIds.length === 0) return trackingResults;
 
@@ -292,14 +271,14 @@ async function enrichWithPlayerNames(takaroClient, trackingResults) {
 
     // Create lookup map
     const playerNameMap = new Map();
-    players.forEach(p => {
+    players.forEach((p) => {
       playerNameMap.set(p.id, p.name);
     });
 
     // Enrich results with player names
-    return trackingResults.map(r => ({
+    return trackingResults.map((r) => ({
       ...r,
-      playerName: playerNameMap.get(r.playerId) || 'Unknown'
+      playerName: playerNameMap.get(r.playerId) || 'Unknown',
     }));
   } catch (error) {
     console.warn('Failed to fetch player names:', error.message);
@@ -393,12 +372,14 @@ async function startServer() {
     serviceSession = {
       domain,
       takaroClient,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
 
     console.log('Service mode active - no login required');
   } else {
-    console.error('ERROR: Service mode not active. Please set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables.');
+    console.error(
+      'ERROR: Service mode not active. Please set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables.'
+    );
   }
 
   app.listen(PORT, () => {
@@ -406,7 +387,7 @@ async function startServer() {
   });
 }
 
-startServer().catch(err => {
+startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });

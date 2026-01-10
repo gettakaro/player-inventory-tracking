@@ -29,8 +29,8 @@ const AreaSearch = {
       shapeOptions: {
         color: '#ff7800',
         weight: 2,
-        fillOpacity: 0.2
-      }
+        fillOpacity: 0.2,
+      },
     });
     this.currentDrawHandler.enable();
     this.drawingEnabled = true;
@@ -43,8 +43,8 @@ const AreaSearch = {
       shapeOptions: {
         color: '#ff7800',
         weight: 2,
-        fillOpacity: 0.2
-      }
+        fillOpacity: 0.2,
+      },
     });
     this.currentDrawHandler.enable();
     this.drawingEnabled = true;
@@ -106,32 +106,31 @@ const AreaSearch = {
         const sw = GameMap.latLngToGame(bounds.getSouthWest());
         const ne = GameMap.latLngToGame(bounds.getNorthEast());
 
-        results = await API.getPlayersInBox(gameServerId, {
-          minX: Math.min(sw.x, ne.x),
-          maxX: Math.max(sw.x, ne.x),
-          minZ: Math.min(sw.z, ne.z),
-          maxZ: Math.max(sw.z, ne.z)
-        }, formattedStartDate, formattedEndDate);
+        results = await API.getPlayersInBox(
+          gameServerId,
+          {
+            minX: Math.min(sw.x, ne.x),
+            maxX: Math.max(sw.x, ne.x),
+            minZ: Math.min(sw.z, ne.z),
+            maxZ: Math.max(sw.z, ne.z),
+          },
+          formattedStartDate,
+          formattedEndDate
+        );
       } else if (this.currentShape instanceof L.Circle) {
         const center = GameMap.latLngToGame(this.currentShape.getLatLng());
         // Convert radius from lat/lng units to game units
         const radiusLatLng = this.currentShape.getRadius();
         const radiusGame = radiusLatLng * GameMap.tileSize;
 
-        results = await API.getPlayersInRadius(
-          gameServerId,
-          center,
-          radiusGame,
-          formattedStartDate,
-          formattedEndDate
-        );
+        results = await API.getPlayersInRadius(gameServerId, center, radiusGame, formattedStartDate, formattedEndDate);
       }
 
       this.displayResults(results || []);
       return results || [];
     } catch (error) {
       console.error('Area search failed:', error);
-      alert('Area search failed: ' + error.message);
+      alert(`Area search failed: ${error.message}`);
       return [];
     }
   },
@@ -172,7 +171,7 @@ const AreaSearch = {
 
     // Enable search if shape is drawn
     searchBtn.disabled = !this.currentShape;
-  }
+  },
 };
 
 window.AreaSearch = AreaSearch;

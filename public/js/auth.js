@@ -35,7 +35,8 @@ const Auth = {
     document.getElementById('map-container').style.display = 'none';
     document.getElementById('connection-status').className = 'status-indicator offline';
     document.getElementById('connection-status').textContent = 'Not Configured';
-    document.getElementById('server-select-container').innerHTML = '<p style="color: #ff6b6b;">Service not configured. Set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables on the server.</p>';
+    document.getElementById('server-select-container').innerHTML =
+      '<p style="color: #ff6b6b;">Service not configured. Set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables on the server.</p>';
   },
 
   showLoggedInState() {
@@ -60,7 +61,7 @@ const Auth = {
 
       select.innerHTML = '<option value="">Select a server...</option>';
 
-      servers.forEach(server => {
+      servers.forEach((server) => {
         const option = document.createElement('option');
         option.value = server.id;
         option.textContent = `${server.name} (${server.type})`;
@@ -88,14 +89,14 @@ const Auth = {
     }
 
     // Find the server
-    const server = this.servers?.find(s => s.id === serverId);
+    const server = this.servers?.find((s) => s.id === serverId);
 
     // Show start button directly - no config needed!
     startBtn.style.display = 'block';
 
     // Store selected server info
     this.selectedServer = server;
-  }
+  },
 };
 
 window.Auth = Auth;

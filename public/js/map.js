@@ -4,17 +4,15 @@
 // At zoom 4: scale = 128 (1 tile = 1 lat/lng unit)
 // At zoom 0: scale = 8 (1 tile = 16 lat/lng units)
 const SDTD_CRS = L.extend({}, L.CRS.Simple, {
-  scale: function(zoom) {
-    return Math.pow(2, zoom + 3);  // zoom 0 = 8, zoom 4 = 128
+  scale: (zoom) => {
+    return 2 ** (zoom + 3); // zoom 0 = 8, zoom 4 = 128
   },
-  zoom: function(scale) {
-    return Math.log(scale) / Math.LN2 - 3;
-  }
+  zoom: (scale) => Math.log(scale) / Math.LN2 - 3,
 });
 
 // Custom GridLayer for 7D2D that handles centered coordinate system
 L.GridLayer.SDTD = L.GridLayer.extend({
-  createTile: function(coords, done) {
+  createTile: function (coords, done) {
     const tile = document.createElement('img');
 
     // Convert Leaflet tile coords to Takaro/7D2D tile coords
@@ -23,25 +21,23 @@ L.GridLayer.SDTD = L.GridLayer.extend({
     const x = coords.x;
     const y = -coords.y - 1;
 
-    const url = this.options.baseUrl
-      .replace('{z}', coords.z)
-      .replace('{x}', x)
-      .replace('{y}', y);
+    const url = this.options.baseUrl.replace('{z}', coords.z).replace('{x}', x).replace('{y}', y);
 
     console.log(`Tile: z=${coords.z} leaflet(${coords.x},${coords.y}) -> 7d2d(${x},${y})`);
 
     tile.onload = () => done(null, tile);
-    tile.onerror = () => { tile.src = ''; done(null, tile); };
+    tile.onerror = () => {
+      tile.src = '';
+      done(null, tile);
+    };
     tile.crossOrigin = 'anonymous';
     tile.src = url;
 
     return tile;
-  }
+  },
 });
 
-L.gridLayer.sdtd = function(options) {
-  return new L.GridLayer.SDTD(options);
-};
+L.gridLayer.sdtd = (options) => new L.GridLayer.SDTD(options);
 
 const GameMap = {
   map: null,
@@ -60,7 +56,7 @@ const GameMap = {
   latLngToGame(latlng) {
     return {
       x: Math.round(latlng.lng * this.tileSize),
-      z: Math.round(latlng.lat * this.tileSize)
+      z: Math.round(latlng.lat * this.tileSize),
     };
   },
 
@@ -78,10 +74,7 @@ const GameMap = {
 
     // Calculate bounds in tile coordinates
     const halfTiles = this.worldSize / this.tileSize / 2;
-    const bounds = L.latLngBounds(
-      L.latLng(-halfTiles, -halfTiles),
-      L.latLng(halfTiles, halfTiles)
-    );
+    const bounds = L.latLngBounds(L.latLng(-halfTiles, -halfTiles), L.latLng(halfTiles, halfTiles));
 
     // Initialize map with custom CRS for proper tile scaling
     this.map = L.map('map', {
@@ -89,14 +82,14 @@ const GameMap = {
       minZoom: 0,
       maxZoom: this.maxZoom + 2,
       maxBounds: bounds.pad(0.5),
-      maxBoundsViscosity: 1.0
+      maxBoundsViscosity: 1.0,
     });
 
     // Set initial view to center (0,0 in tile coords)
     this.map.setView([0, 0], 0);
 
     // Add custom tile layer for 7D2D
-    const tileUrl = API.getMapTileUrl(gameServerId) + '?session=' + API.getSession();
+    const tileUrl = `${API.getMapTileUrl(gameServerId)}?session=${API.getSession()}`;
     this.tileLayer = L.gridLayer.sdtd({
       baseUrl: tileUrl,
       tileSize: this.tileSize,
@@ -105,7 +98,7 @@ const GameMap = {
       maxNativeZoom: this.maxZoom,
       bounds: bounds,
       noWrap: true,
-      keepBuffer: 2
+      keepBuffer: 2,
     });
 
     this.tileLayer.addTo(this.map);
@@ -116,8 +109,7 @@ const GameMap = {
     // Add coordinate display on mouse move
     this.map.on('mousemove', (e) => {
       const coords = this.latLngToGame(e.latlng);
-      document.getElementById('cursor-coords').textContent =
-        `X: ${coords.x}, Z: ${coords.z}`;
+      document.getElementById('cursor-coords').textContent = `X: ${coords.x}, Z: ${coords.z}`;
     });
 
     // Save map state on view change
@@ -140,24 +132,18 @@ const GameMap = {
 
     // Vertical lines
     for (let x = -halfWorld; x <= halfWorld; x += gridSize) {
-      gridLines.push([
-        this.gameToLatLng(x, -halfWorld),
-        this.gameToLatLng(x, halfWorld)
-      ]);
+      gridLines.push([this.gameToLatLng(x, -halfWorld), this.gameToLatLng(x, halfWorld)]);
     }
 
     // Horizontal lines
     for (let z = -halfWorld; z <= halfWorld; z += gridSize) {
-      gridLines.push([
-        this.gameToLatLng(-halfWorld, z),
-        this.gameToLatLng(halfWorld, z)
-      ]);
+      gridLines.push([this.gameToLatLng(-halfWorld, z), this.gameToLatLng(halfWorld, z)]);
     }
 
     const gridLayer = L.polyline(gridLines, {
       color: 'rgba(255, 255, 255, 0.1)',
       weight: 1,
-      interactive: false
+      interactive: false,
     });
 
     // Only show grid at lower zoom levels
@@ -180,7 +166,7 @@ const GameMap = {
 
     const state = {
       center: this.map.getCenter(),
-      zoom: this.map.getZoom()
+      zoom: this.map.getZoom(),
     };
 
     localStorage.setItem(`mapState_${this.gameServerId}`, JSON.stringify(state));
@@ -212,7 +198,7 @@ const GameMap = {
     if (this.tileLayer) {
       this.tileLayer.redraw();
     }
-  }
+  },
 };
 
 window.GameMap = GameMap;

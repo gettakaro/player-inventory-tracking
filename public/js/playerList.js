@@ -4,12 +4,12 @@ const PlayerList = {
   isCollapsed: false,
   searchTerm: '',
   players: [],
-  selectedPlayers: new Set(),  // Track selected player IDs
-  hasInitializedSelection: false,  // Track if we've done initial selection
-  collapsedGroups: { online: false, offline: false },  // Track collapsed state
-  areaFilterActive: false,  // Track if area filter is active
-  areaFilterPlayerIds: new Set(),  // Player IDs from area search
-  timeFilterEnabled: true,  // Filter offline players by time range
+  selectedPlayers: new Set(), // Track selected player IDs
+  hasInitializedSelection: false, // Track if we've done initial selection
+  collapsedGroups: { online: false, offline: false }, // Track collapsed state
+  areaFilterActive: false, // Track if area filter is active
+  areaFilterPlayerIds: new Set(), // Player IDs from area search
+  timeFilterEnabled: true, // Filter offline players by time range
 
   init() {
     this.setupEventListeners();
@@ -116,7 +116,7 @@ const PlayerList = {
         if (this.collapsedGroups.offline) {
           document.getElementById('offline-players-group')?.classList.add('collapsed');
         }
-      } catch (e) {
+      } catch (_e) {
         // Ignore parse errors
       }
     }
@@ -126,7 +126,7 @@ const PlayerList = {
   updatePlayers(players) {
     // Auto-select only online players on very first load
     if (!this.hasInitializedSelection) {
-      players.forEach(p => {
+      players.forEach((p) => {
         const isOnline = p.online === 1 || p.online === true;
         if (isOnline) {
           this.selectedPlayers.add(String(p.id));
@@ -135,9 +135,9 @@ const PlayerList = {
       this.hasInitializedSelection = true;
     } else {
       // Add any new online players to selection (players who just joined)
-      players.forEach(p => {
+      players.forEach((p) => {
         const isOnline = p.online === 1 || p.online === true;
-        if (isOnline && !this.players.find(existing => String(existing.id) === String(p.id))) {
+        if (isOnline && !this.players.find((existing) => String(existing.id) === String(p.id))) {
           this.selectedPlayers.add(String(p.id));
         }
       });
@@ -160,7 +160,7 @@ const PlayerList = {
       const endTime = end.getTime();
 
       const beforeCount = filteredPlayers.length;
-      filteredPlayers = filteredPlayers.filter(player => {
+      filteredPlayers = filteredPlayers.filter((player) => {
         // Always show online players regardless of time filter
         const isOnline = player.online === 1 || player.online === true;
         if (isOnline) return true;
@@ -170,33 +170,34 @@ const PlayerList = {
         const lastSeenTime = new Date(player.lastSeen).getTime();
         return lastSeenTime >= startTime && lastSeenTime <= endTime;
       });
-      console.log(`[PlayerList] Time filter: ${beforeCount} → ${filteredPlayers.length} players (range: ${start.toISOString()} to ${end.toISOString()})`);
+      console.log(
+        `[PlayerList] Time filter: ${beforeCount} → ${filteredPlayers.length} players (range: ${start.toISOString()} to ${end.toISOString()})`
+      );
     }
 
     // Apply area filter if active
     if (this.areaFilterActive) {
-      filteredPlayers = filteredPlayers.filter(p =>
-        this.areaFilterPlayerIds.has(String(p.id)) ||
-        this.areaFilterPlayerIds.has(String(p.playerId))
+      filteredPlayers = filteredPlayers.filter(
+        (p) => this.areaFilterPlayerIds.has(String(p.id)) || this.areaFilterPlayerIds.has(String(p.playerId))
       );
     }
 
     // Then filter by search term
-    filteredPlayers = filteredPlayers.filter(player => {
+    filteredPlayers = filteredPlayers.filter((player) => {
       if (!this.searchTerm) return true;
       return player.name.toLowerCase().includes(this.searchTerm);
     });
 
     // Separate online and offline
-    const onlinePlayers = filteredPlayers.filter(p => p.online === 1 || p.online === true);
-    const offlinePlayers = filteredPlayers.filter(p => !(p.online === 1 || p.online === true));
+    const onlinePlayers = filteredPlayers.filter((p) => p.online === 1 || p.online === true);
+    const offlinePlayers = filteredPlayers.filter((p) => !(p.online === 1 || p.online === true));
 
     // Sort alphabetically by name
     onlinePlayers.sort((a, b) => a.name.localeCompare(b.name));
     offlinePlayers.sort((a, b) => a.name.localeCompare(b.name));
 
     // Update selected count
-    const selectedCount = filteredPlayers.filter(p => this.isSelected(p.id)).length;
+    const selectedCount = filteredPlayers.filter((p) => this.isSelected(p.id)).length;
     const selectedEl = document.getElementById('panel-selected-count');
     if (selectedEl) {
       selectedEl.textContent = `${selectedCount} selected`;
@@ -229,7 +230,7 @@ const PlayerList = {
       }
       return;
     }
-    const selectedCount = players.filter(p => this.isSelected(p.id)).length;
+    const selectedCount = players.filter((p) => this.isSelected(p.id)).length;
     if (selectedCount === 0) {
       checkbox.checked = false;
       checkbox.indeterminate = false;
@@ -247,25 +248,25 @@ const PlayerList = {
       return `<li class="player-list-empty">No ${isOnline ? 'online' : 'offline'} players</li>`;
     }
 
-    return players.map(player => {
-      const lastSeen = player.lastSeen
-        ? this.formatLastSeen(player.lastSeen)
-        : 'Now';
+    return players
+      .map((player) => {
+        const lastSeen = player.lastSeen ? this.formatLastSeen(player.lastSeen) : 'Now';
 
-      const hasCoords = player.x !== null && player.z !== null;
-      const coords = hasCoords
-        ? `X: ${Math.round(player.x)}, Z: ${Math.round(player.z)}`
-        : (isOnline ? 'Loading...' : 'Unknown location');
+        const hasCoords = player.x !== null && player.z !== null;
+        const coords = hasCoords
+          ? `X: ${Math.round(player.x)}, Z: ${Math.round(player.z)}`
+          : isOnline
+            ? 'Loading...'
+            : 'Unknown location';
 
-      const isChecked = this.isSelected(player.id) ? 'checked' : '';
-      const loadingClass = (isOnline && !hasCoords) ? 'player-loading' : '';
+        const isChecked = this.isSelected(player.id) ? 'checked' : '';
+        const loadingClass = isOnline && !hasCoords ? 'player-loading' : '';
 
-      // Get player color - online players get unique colors, offline are gray
-      const playerColor = isOnline && player.playerId
-        ? ColorUtils.getPlayerColor(player.playerId)
-        : ColorUtils.offlineColor;
+        // Get player color - online players get unique colors, offline are gray
+        const playerColor =
+          isOnline && player.playerId ? ColorUtils.getPlayerColor(player.playerId) : ColorUtils.offlineColor;
 
-      return `
+        return `
         <li class="player-list-item ${loadingClass}" data-player-id="${player.id}">
           <div class="player-item-row">
             <input type="checkbox" class="player-select-checkbox"
@@ -279,12 +280,13 @@ const PlayerList = {
           </div>
         </li>
       `;
-    }).join('');
+      })
+      .join('');
   },
 
   attachClickHandlers() {
     // Checkbox handlers
-    document.querySelectorAll('.player-select-checkbox').forEach(checkbox => {
+    document.querySelectorAll('.player-select-checkbox').forEach((checkbox) => {
       checkbox.addEventListener('change', (e) => {
         e.stopPropagation();
         this.toggleSelection(checkbox.dataset.playerId);
@@ -293,7 +295,7 @@ const PlayerList = {
     });
 
     // Row click handlers (for map focus)
-    document.querySelectorAll('.player-list-item').forEach(item => {
+    document.querySelectorAll('.player-list-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         if (!e.target.classList.contains('player-select-checkbox')) {
           this.focusPlayer(item.dataset.playerId);
@@ -308,7 +310,7 @@ const PlayerList = {
     // Try to find marker - check both string and number keys
     let marker = Players.markers.get(playerId);
     if (!marker) {
-      marker = Players.markers.get(parseInt(playerId));
+      marker = Players.markers.get(parseInt(playerId, 10));
     }
     if (!marker) {
       marker = Players.markers.get(String(playerId));
@@ -320,7 +322,7 @@ const PlayerList = {
       marker.openPopup();
     } else {
       // Marker might be hidden - find player in our data and pan to coords
-      const player = this.players.find(p => String(p.id) === String(playerId));
+      const player = this.players.find((p) => String(p.id) === String(playerId));
       if (player && player.x !== null && player.z !== null) {
         const pos = GameMap.gameToLatLng(player.x, player.z);
         GameMap.map.setView(pos, Math.max(GameMap.map.getZoom(), 2));
@@ -328,7 +330,7 @@ const PlayerList = {
     }
 
     // Show player info panel
-    const player = this.players.find(p => String(p.id) === String(playerId));
+    const player = this.players.find((p) => String(p.id) === String(playerId));
     if (player && window.PlayerInfo) {
       PlayerInfo.showPlayer(player.playerId || playerId);
     }
@@ -360,7 +362,7 @@ const PlayerList = {
     this.players = [];
     this.searchTerm = '';
     this.selectedPlayers.clear();
-    this.hasInitializedSelection = false;  // Reset so next login selects all
+    this.hasInitializedSelection = false; // Reset so next login selects all
     this.areaFilterActive = false;
     this.areaFilterPlayerIds.clear();
     const searchInput = document.getElementById('player-search');
@@ -392,23 +394,27 @@ const PlayerList = {
   },
 
   selectAll() {
-    this.getFilteredPlayers().forEach(p => this.selectedPlayers.add(String(p.id)));
+    for (const p of this.getFilteredPlayers()) {
+      this.selectedPlayers.add(String(p.id));
+    }
     this.render();
     this.notifySelectionChange();
   },
 
   deselectAll() {
-    this.getFilteredPlayers().forEach(p => this.selectedPlayers.delete(String(p.id)));
+    for (const p of this.getFilteredPlayers()) {
+      this.selectedPlayers.delete(String(p.id));
+    }
     this.render();
     this.notifySelectionChange();
   },
 
   selectAllByStatus(isOnline, select) {
-    const players = this.getFilteredPlayers().filter(p => {
+    const players = this.getFilteredPlayers().filter((p) => {
       const playerOnline = p.online === 1 || p.online === true;
       return isOnline ? playerOnline : !playerOnline;
     });
-    players.forEach(p => {
+    players.forEach((p) => {
       if (select) {
         this.selectedPlayers.add(String(p.id));
       } else {
@@ -420,7 +426,7 @@ const PlayerList = {
   },
 
   getFilteredPlayers() {
-    return this.players.filter(p => !this.searchTerm || p.name.toLowerCase().includes(this.searchTerm));
+    return this.players.filter((p) => !this.searchTerm || p.name.toLowerCase().includes(this.searchTerm));
   },
 
   notifySelectionChange() {
@@ -444,11 +450,10 @@ const PlayerList = {
     this.selectedPlayers.clear();
 
     // Convert playerIds (which may be Takaro UUIDs) to local IDs
-    playerIds.forEach(searchId => {
+    playerIds.forEach((searchId) => {
       // Try to find player by either id or playerId
-      const player = this.players.find(p =>
-        String(p.id) === String(searchId) ||
-        String(p.playerId) === String(searchId)
+      const player = this.players.find(
+        (p) => String(p.id) === String(searchId) || String(p.playerId) === String(searchId)
       );
       if (player) {
         // Always use the local id for selection
@@ -475,7 +480,7 @@ const PlayerList = {
     }
 
     for (const pogId of this.selectedPlayers) {
-      const player = this.players.find(p => String(p.id) === pogId);
+      const player = this.players.find((p) => String(p.id) === pogId);
       if (!player || !player.playerId) continue;
 
       // Apply time filter - online players always pass, offline must be in range
@@ -494,7 +499,9 @@ const PlayerList = {
   setAreaFilter(playerIds) {
     this.areaFilterActive = true;
     this.areaFilterPlayerIds.clear();
-    playerIds.forEach(id => this.areaFilterPlayerIds.add(String(id)));
+    for (const id of playerIds) {
+      this.areaFilterPlayerIds.add(String(id));
+    }
 
     this.updateFilterIndicator();
     this.render();
@@ -546,7 +553,7 @@ const PlayerList = {
     } else if (indicator) {
       indicator.style.display = 'none';
     }
-  }
+  },
 };
 
 window.PlayerList = PlayerList;

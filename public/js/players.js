@@ -2,11 +2,11 @@
 
 const Players = {
   markers: new Map(),
-  inventories: new Map(),  // Store inventory by player ID
-  allPlayers: [],  // Store all players for lookup by other modules
+  inventories: new Map(), // Store inventory by player ID
+  allPlayers: [], // Store all players for lookup by other modules
   showOnline: true,
   showOffline: true,
-  selectedPlayers: new Set(),  // Track selected player IDs for visibility
+  selectedPlayers: new Set(), // Track selected player IDs for visibility
   refreshInterval: null,
   gameServerId: null,
 
@@ -14,9 +14,7 @@ const Players = {
   createIcon(online, playerId = null) {
     const size = 24;
     // Online players get unique colors based on their ID, offline players are gray
-    const color = online && playerId
-      ? ColorUtils.getPlayerColor(playerId)
-      : ColorUtils.offlineColor;
+    const color = online && playerId ? ColorUtils.getPlayerColor(playerId) : ColorUtils.offlineColor;
 
     const personSvg = `
       <svg viewBox="0 0 24 24" width="${size}" height="${size}">
@@ -28,7 +26,7 @@ const Players = {
       className: 'player-marker-container',
       html: `<div class="player-marker ${online ? 'online' : 'offline'}">${personSvg}</div>`,
       iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2]
+      iconAnchor: [size / 2, size / 2],
     });
   },
 
@@ -69,15 +67,18 @@ const Players = {
 
     const items = byTimestamp[timestamps[0]];
 
-    const rows = items.map(item => {
-      const quality = item.quality && item.quality !== '-1' && item.quality !== null
-        ? `<span class="item-quality">Q${item.quality}</span>`
-        : '';
-      return `<tr>
+    const rows = items
+      .map((item) => {
+        const quality =
+          item.quality && item.quality !== '-1' && item.quality !== null
+            ? `<span class="item-quality">Q${item.quality}</span>`
+            : '';
+        return `<tr>
         <td class="item-name">${item.itemName || item.itemCode || 'Unknown'}${quality}</td>
         <td class="item-count">${item.quantity || 1}</td>
       </tr>`;
-    }).join('');
+      })
+      .join('');
 
     return `
       <div class="inventory-section">
@@ -95,13 +96,9 @@ const Players = {
   },
 
   createPopupContent(player) {
-    const lastSeen = player.lastSeen
-      ? new Date(player.lastSeen).toLocaleString()
-      : 'Now';
+    const lastSeen = player.lastSeen ? new Date(player.lastSeen).toLocaleString() : 'Now';
 
-    const profileUrl = player.playerId
-      ? `https://dashboard.takaro.io/player/${player.playerId}/info`
-      : null;
+    const profileUrl = player.playerId ? `https://dashboard.takaro.io/player/${player.playerId}/info` : null;
 
     const playtime = this.formatPlaytime(player.playtimeSeconds);
     const currency = this.formatCurrency(player.currency);
@@ -192,7 +189,7 @@ const Players = {
         } else {
           // Create new marker
           const marker = L.marker(pos, {
-            icon: this.createIcon(isOnline, player.playerId)
+            icon: this.createIcon(isOnline, player.playerId),
           });
 
           marker.bindPopup(this.createPopupContent(player));
@@ -218,10 +215,8 @@ const Players = {
       }
 
       // Update status
-      document.getElementById('player-count').textContent =
-        `Players: ${onlineCount} online, ${offlineCount} offline`;
-      document.getElementById('last-update').textContent =
-        `Last update: ${new Date().toLocaleTimeString()}`;
+      document.getElementById('player-count').textContent = `Players: ${onlineCount} online, ${offlineCount} offline`;
+      document.getElementById('last-update').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
 
       // Sync with player list panel
       if (window.PlayerList) {
@@ -233,7 +228,6 @@ const Players = {
           this.refreshVisibility();
         }
       }
-
     } catch (error) {
       console.error('Failed to update players:', error);
     }
@@ -274,13 +268,13 @@ const Players = {
 
   refreshVisibility() {
     // Remove all markers and re-add based on visibility
-    for (const [id, marker] of this.markers) {
+    for (const [_id, marker] of this.markers) {
       marker.remove();
     }
     this.markers.clear();
 
     // Trigger a full update
-    if (window.App && window.App.gameServerId) {
+    if (window.App?.gameServerId) {
       this.update(window.App.gameServerId);
     }
   },
@@ -316,7 +310,7 @@ const Players = {
     if (window.PlayerList) {
       PlayerList.clear();
     }
-  }
+  },
 };
 
 // Handle inventory load button clicks (delegated event)

@@ -1,12 +1,66 @@
+version: '3.8'
+
 services:
+  # Redis cache service
   redis:
-    image: redis:alpine
+    image: redis:7.2-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+  # Application service (development)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      # Load from .env file
+      - TAKARO_USERNAME=${TAKARO_USERNAME}
+      - TAKARO_PASSWORD=${TAKARO_PASSWORD}
+      - TAKARO_DOMAIN=${TAKARO_DOMAIN}
+      - TAKARO_API_URL=${TAKARO_API_URL:-https://api.takaro.io}
+    volumes:
+      # Mount source code for hot reload
+      - ./server.js:/app/server.js
+      - ./lib:/app/lib
+      - ./public:/app/public
+      - ./package*.json:/app/
+      # Persistent cache
+      - ./cache:/app/cache
+      # Don't mount node_modules (use container's version)
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - app-network
 
 volumes:
   redis_data:
+
+networks:
+  app-network:
+    driver: bridge

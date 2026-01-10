@@ -1,0 +1,193 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ============================================
+  # Job 1: Build and Push Docker Image
+  # ============================================
+  build:
+    name: Build and Push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Branch references
+            type=ref,event=branch
+            # PR references
+            type=ref,event=pr
+            # Semantic versioning for tags
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Short SHA
+            type=sha,prefix=sha-,format=short
+            # Latest tag only on main branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Set build metadata
+        id: build-meta
+        run: |
+          echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "commit=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TAKARO_VERSION=${{ steps.build-meta.outputs.version }}
+            TAKARO_COMMIT=${{ steps.build-meta.outputs.commit }}
+            TAKARO_BUILD_DATE=${{ steps.build-meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  # ============================================
+  # Job 2: Smoke Test
+  # ============================================
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image tag
+        id: extract-tag
+        env:
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            TAG="latest"
+          else
+            TAG="sha-$(echo $GITHUB_SHA | cut -c1-7)"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create test environment
+        env:
+          IMAGE_TAG: ${{ steps.extract-tag.outputs.tag }}
+        run: |
+          # Create minimal docker-compose for smoke test
+          cat > docker-compose.test.yml <<EOF
+          version: '3.8'
+          services:
+            redis:
+              image: redis:7.2-alpine
+              healthcheck:
+                test: ["CMD", "redis-cli", "ping"]
+                interval: 5s
+                timeout: 3s
+                retries: 3
+
+            app:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+              ports:
+                - "3000:3000"
+              environment:
+                - NODE_ENV=production
+                - REDIS_URL=redis://redis:6379
+                - TAKARO_USERNAME=test@example.com
+                - TAKARO_PASSWORD=testpassword
+                - TAKARO_DOMAIN=testdomain
+              depends_on:
+                redis:
+                  condition: service_healthy
+              healthcheck:
+                test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/status"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 20s
+          EOF
+
+      - name: Start services
+        run: docker compose -f docker-compose.test.yml up -d
+
+      - name: Wait for app to be healthy
+        run: |
+          echo "Waiting for app to be healthy..."
+          timeout 120 bash -c \
+            'until docker compose -f docker-compose.test.yml ps app | grep -q "healthy"; do sleep 2; done'
+          echo "App is healthy!"
+
+      - name: Test health endpoint
+        run: |
+          curl -f http://localhost:3000/api/auth/status
+          echo "✓ Health check passed"
+
+      - name: Test Redis connectivity
+        run: |
+          docker compose -f docker-compose.test.yml exec -T app sh -c \
+            'wget -qO- http://localhost:3000/api/auth/status | grep -q serviceMode'
+          echo "✓ App is responding correctly"
+
+      - name: View logs on failure
+        if: failure()
+        run: |
+          echo "=== App Logs ==="
+          docker compose -f docker-compose.test.yml logs app
+          echo "=== Redis Logs ==="
+          docker compose -f docker-compose.test.yml logs redis
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v

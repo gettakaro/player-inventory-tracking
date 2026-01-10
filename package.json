@@ -7,7 +7,10 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "restart": "docker-compose up -d && pkill -f 'node server.js' ; node server.js",
-    "stop": "pkill -f 'node server.js' ; docker-compose down"
+    "stop": "pkill -f 'node server.js' ; docker-compose down",
+    "docker:build": "docker build -t takaro-player-map .",
+    "docker:dev": "docker-compose up",
+    "docker:down": "docker-compose down -v"
   },
   "dependencies": {
     "@takaro/apiclient": "^0.4.10",

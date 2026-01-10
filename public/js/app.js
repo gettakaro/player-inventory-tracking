@@ -77,11 +77,11 @@ const App = {
     });
 
     document.getElementById('playback-slider').addEventListener('input', (e) => {
-      History.seekTo(parseInt(e.target.value));
+      History.seekTo(parseInt(e.target.value, 10));
     });
 
     document.getElementById('playback-speed').addEventListener('change', (e) => {
-      History.setSpeed(parseInt(e.target.value));
+      History.setSpeed(parseInt(e.target.value, 10));
     });
 
     document.getElementById('close-playback-btn').addEventListener('click', () => {
@@ -124,7 +124,7 @@ const App = {
     });
   },
 
-  async onTimeRangeChange(startDate, endDate, presetId) {
+  async onTimeRangeChange(startDate, endDate, _presetId) {
     if (!this.gameServerId) return;
 
     // Refresh player list with new time filter
@@ -171,7 +171,7 @@ const App = {
     AreaSearch.init(GameMap.map, gameServerId, async (results) => {
       if (results.length > 0) {
         // Get unique player IDs
-        const playerIds = [...new Set(results.map(r => r.playerId).filter(Boolean))];
+        const playerIds = [...new Set(results.map((r) => r.playerId).filter(Boolean))];
 
         if (playerIds.length > 0 && window.PlayerList) {
           // Filter player list to show only found players
@@ -220,7 +220,7 @@ const App = {
     }
 
     this.gameServerId = null;
-  }
+  },
 };
 
 // Initialize app when DOM is ready

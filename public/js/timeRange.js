@@ -22,7 +22,7 @@ const TimeRange = {
     { id: '2d', label: 'Last 2 days', value: 2 * 24 * 60 * 60 * 1000, group: 'days' },
     { id: '7d', label: 'Last 7 days', value: 7 * 24 * 60 * 60 * 1000, group: 'days' },
     // Custom
-    { id: 'custom', label: 'Custom date range...', value: null, group: 'custom' }
+    { id: 'custom', label: 'Custom date range...', value: null, group: 'custom' },
   ],
 
   currentPreset: '30s',
@@ -121,11 +121,11 @@ const TimeRange = {
     if (this.currentPreset === 'custom') {
       return {
         start: this.customStart || new Date(Date.now() - 24 * 60 * 60 * 1000),
-        end: this.customEnd || new Date()
+        end: this.customEnd || new Date(),
       };
     }
 
-    const preset = this.presets.find(p => p.id === this.currentPreset);
+    const preset = this.presets.find((p) => p.id === this.currentPreset);
     const now = new Date();
     const start = new Date(now.getTime() - (preset ? preset.value : 24 * 60 * 60 * 1000));
 
@@ -170,7 +170,7 @@ const TimeRange = {
     const state = {
       preset: this.currentPreset,
       customStart: this.customStart ? this.customStart.toISOString() : null,
-      customEnd: this.customEnd ? this.customEnd.toISOString() : null
+      customEnd: this.customEnd ? this.customEnd.toISOString() : null,
     };
     localStorage.setItem('timeRangeState', JSON.stringify(state));
   },
@@ -196,9 +196,9 @@ const TimeRange = {
   },
 
   getCurrentLabel() {
-    const preset = this.presets.find(p => p.id === this.currentPreset);
+    const preset = this.presets.find((p) => p.id === this.currentPreset);
     return preset ? preset.label : 'Last 24 hours';
-  }
+  },
 };
 
 window.TimeRange = TimeRange;

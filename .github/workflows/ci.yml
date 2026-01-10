@@ -17,7 +17,29 @@ env:
 
 jobs:
   # ============================================
-  # Job 1: Build and Push Docker Image
+  # Job 1: Code Quality Checks
+  # ============================================
+  lint:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Biome checks
+        run: npm run ci:check
+
+  # ============================================
+  # Job 2: Build and Push Docker Image
   # ============================================
   build:
     name: Build and Push

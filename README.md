@@ -112,7 +112,7 @@ The `0` at the end grants full permissions. Use a strong, unique token secret.
 │ • Session management                    │
 │ • Proxy Takaro API (player data)        │
 │ • Proxy 7D2D API (map tiles)            │
-│ • Position history storage (SQLite)     │
+│ • Redis caching layer                   │
 │ • Periodic position polling (30s)       │
 └─────────────────────────────────────────┘
         │                   │
@@ -124,9 +124,9 @@ The `0` at the end grants full permissions. Use a strong, unique token secret.
 
 ## Data Storage
 
-- Position history is stored in a local SQLite database
-- Data older than 7 days is automatically cleaned up
-- Database location: `data/playermap.db`
+- Map tiles and API responses are cached in Redis for performance
+- Cache uses TTL-based expiration (player data: 30s, map metadata: 1h, tiles: 24h)
+- Falls back to memory cache if Redis is unavailable
 
 ## API Endpoints
 
@@ -180,6 +180,30 @@ Run with auto-reload:
 ```bash
 npm run dev
 ```
+
+### Code Quality
+
+This project uses [Biome](https://biomejs.dev/) for linting and formatting.
+
+Check code quality before committing:
+```bash
+npm run check
+```
+
+Auto-fix linting and formatting issues:
+```bash
+npm run check:fix
+```
+
+Individual commands:
+```bash
+npm run lint          # Check linting only
+npm run lint:fix      # Fix linting issues
+npm run format        # Check formatting only
+npm run format:fix    # Fix formatting issues
+```
+
+The CI pipeline enforces code quality checks on all pull requests.
 
 ## License
 

@@ -7,7 +7,8 @@ const PlayerInfo = {
   isLoading: false,
 
   // Base URL for 7DTD item icons from CSMM repository
-  ICON_BASE_URL: 'https://raw.githubusercontent.com/CatalysmsServerManager/7dtd-icons/master/sdtdIcons/1.0%20-%20Vanilla/',
+  ICON_BASE_URL:
+    'https://raw.githubusercontent.com/CatalysmsServerManager/7dtd-icons/master/sdtdIcons/1.0%20-%20Vanilla/',
 
   init() {
     this.setupEventListeners();
@@ -21,7 +22,7 @@ const PlayerInfo = {
     }
 
     // Tab switching
-    document.querySelectorAll('.player-info-tabs .tab-btn').forEach(btn => {
+    document.querySelectorAll('.player-info-tabs .tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const tabId = e.target.dataset.tab;
         this.switchTab(tabId);
@@ -34,12 +35,12 @@ const PlayerInfo = {
 
   switchTab(tabId) {
     // Update tab buttons
-    document.querySelectorAll('.player-info-tabs .tab-btn').forEach(btn => {
+    document.querySelectorAll('.player-info-tabs .tab-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.tab === tabId);
     });
 
     // Update tab panes
-    document.querySelectorAll('.tab-pane').forEach(pane => {
+    document.querySelectorAll('.tab-pane').forEach((pane) => {
       pane.classList.toggle('active', pane.id === `tab-${tabId}`);
     });
 
@@ -53,8 +54,8 @@ const PlayerInfo = {
     if (this.isLoading) return;
 
     // Find player in the players list
-    const player = Players.allPlayers.find(p =>
-      String(p.playerId) === String(playerId) || String(p.id) === String(playerId)
+    const player = Players.allPlayers.find(
+      (p) => String(p.playerId) === String(playerId) || String(p.id) === String(playerId)
     );
 
     if (!player) {
@@ -103,13 +104,10 @@ const PlayerInfo = {
     const isOnline = player.online === 1 || player.online === true;
     const lastSeen = player.lastSeen ? new Date(player.lastSeen).toLocaleString() : 'Now';
     const playtime = this.formatPlaytime(player.playtimeSeconds);
-    const currency = player.currency !== null && player.currency !== undefined
-      ? player.currency.toLocaleString()
-      : null;
+    const currency =
+      player.currency !== null && player.currency !== undefined ? player.currency.toLocaleString() : null;
 
-    const profileUrl = player.playerId
-      ? `https://dashboard.takaro.io/player/${player.playerId}/info`
-      : null;
+    const profileUrl = player.playerId ? `https://dashboard.takaro.io/player/${player.playerId}/info` : null;
 
     // Get current color for player
     const playerId = player.playerId;
@@ -134,33 +132,49 @@ const PlayerInfo = {
                   title="Reset to auto color">Reset</button>
         </span>
       </div>
-      ${currency !== null ? `
+      ${
+        currency !== null
+          ? `
       <div class="stat-item stat-currency">
         <span class="stat-label">Currency</span>
         <span class="stat-value currency-value">${currency}</span>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
       <div class="stat-item">
         <span class="stat-label">Position</span>
         <span class="stat-value">X: ${Math.round(player.x)}, Z: ${Math.round(player.z)}${player.y !== null ? `, Y: ${Math.round(player.y)}` : ''}</span>
       </div>
-      ${!isOnline ? `
+      ${
+        !isOnline
+          ? `
       <div class="stat-item">
         <span class="stat-label">Last Seen</span>
         <span class="stat-value">${lastSeen}</span>
       </div>
-      ` : ''}
-      ${playtime ? `
+      `
+          : ''
+      }
+      ${
+        playtime
+          ? `
       <div class="stat-item">
         <span class="stat-label">Playtime</span>
         <span class="stat-value">${playtime}</span>
       </div>
-      ` : ''}
-      ${profileUrl ? `
+      `
+          : ''
+      }
+      ${
+        profileUrl
+          ? `
       <div class="stat-item">
         <a href="${profileUrl}" target="_blank" class="profile-link">View Takaro Profile</a>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
     `;
 
     // Attach color picker event handlers
@@ -207,9 +221,9 @@ const PlayerInfo = {
     // Parse rgb(r, g, b) format
     const match = computed.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
     if (match) {
-      const r = parseInt(match[1]).toString(16).padStart(2, '0');
-      const g = parseInt(match[2]).toString(16).padStart(2, '0');
-      const b = parseInt(match[3]).toString(16).padStart(2, '0');
+      const r = parseInt(match[1], 10).toString(16).padStart(2, '0');
+      const g = parseInt(match[2], 10).toString(16).padStart(2, '0');
+      const b = parseInt(match[3], 10).toString(16).padStart(2, '0');
       return `#${r}${g}${b}`;
     }
 
@@ -241,11 +255,7 @@ const PlayerInfo = {
       const { start, end } = TimeRange.getDateRange();
 
       // Fetch inventory history
-      const inventory = await API.getPlayerInventory(
-        this.selectedPlayerId,
-        start.toISOString(),
-        end.toISOString()
-      );
+      const inventory = await API.getPlayerInventory(this.selectedPlayerId, start.toISOString(), end.toISOString());
 
       this.inventoryHistory = inventory;
 
@@ -254,7 +264,6 @@ const PlayerInfo = {
 
       // Render diff timeline
       this.renderInventoryDiff(inventory);
-
     } catch (error) {
       console.error('Failed to load inventory:', error);
       if (currentContainer) currentContainer.innerHTML = '<div class="error-text">Failed to load inventory</div>';
@@ -288,18 +297,21 @@ const PlayerInfo = {
     const items = byTimestamp[timestamps[0]];
     const snapshotTime = new Date(timestamps[0]).toLocaleString();
 
-    const rows = items.map(item => {
-      const itemCode = item.itemCode || item.itemName || 'Unknown';
-      const displayName = item.itemName || item.itemCode || 'Unknown';
-      const quality = item.quality && item.quality !== '-1' && item.quality !== null
-        ? `<span class="item-quality">Q${item.quality}</span>`
-        : '';
-      const icon = this.createItemIcon(itemCode);
-      return `<tr>
+    const rows = items
+      .map((item) => {
+        const itemCode = item.itemCode || item.itemName || 'Unknown';
+        const displayName = item.itemName || item.itemCode || 'Unknown';
+        const quality =
+          item.quality && item.quality !== '-1' && item.quality !== null
+            ? `<span class="item-quality">Q${item.quality}</span>`
+            : '';
+        const icon = this.createItemIcon(itemCode);
+        return `<tr>
         <td class="item-name">${icon}${this.escapeHtml(displayName)}${quality}</td>
         <td class="item-count">${item.quantity || 1}</td>
       </tr>`;
-    }).join('');
+      })
+      .join('');
 
     container.innerHTML = `
       <div class="snapshot-time">As of ${snapshotTime}</div>
@@ -348,7 +360,7 @@ const PlayerInfo = {
       if (diff.added.length > 0 || diff.removed.length > 0 || diff.changed.length > 0) {
         diffs.push({
           timestamp: timestamps[i],
-          ...diff
+          ...diff,
         });
       }
     }
@@ -359,32 +371,41 @@ const PlayerInfo = {
     }
 
     // Render diffs (most recent first)
-    const diffHtml = diffs.reverse().map(diff => {
-      const time = new Date(diff.timestamp).toLocaleString();
+    const diffHtml = diffs
+      .reverse()
+      .map((diff) => {
+        const time = new Date(diff.timestamp).toLocaleString();
 
-      const addedHtml = diff.added.map(item => {
-        const icon = this.createItemIcon(item.code || item.name);
-        return `<div class="diff-item diff-added">${icon}<span class="diff-symbol">+</span> ${this.escapeHtml(item.name)} x${item.quantity}${item.quality ? ` (Q${item.quality})` : ''}</div>`;
-      }).join('');
+        const addedHtml = diff.added
+          .map((item) => {
+            const icon = this.createItemIcon(item.code || item.name);
+            return `<div class="diff-item diff-added">${icon}<span class="diff-symbol">+</span> ${this.escapeHtml(item.name)} x${item.quantity}${item.quality ? ` (Q${item.quality})` : ''}</div>`;
+          })
+          .join('');
 
-      const removedHtml = diff.removed.map(item => {
-        const icon = this.createItemIcon(item.code || item.name);
-        return `<div class="diff-item diff-removed">${icon}<span class="diff-symbol">-</span> ${this.escapeHtml(item.name)} x${item.quantity}${item.quality ? ` (Q${item.quality})` : ''}</div>`;
-      }).join('');
+        const removedHtml = diff.removed
+          .map((item) => {
+            const icon = this.createItemIcon(item.code || item.name);
+            return `<div class="diff-item diff-removed">${icon}<span class="diff-symbol">-</span> ${this.escapeHtml(item.name)} x${item.quantity}${item.quality ? ` (Q${item.quality})` : ''}</div>`;
+          })
+          .join('');
 
-      const changedHtml = diff.changed.map(item => {
-        const icon = this.createItemIcon(item.code || item.name);
-        const change = item.quantityChange > 0 ? `+${item.quantityChange}` : item.quantityChange;
-        return `<div class="diff-item diff-changed">${icon}<span class="diff-symbol">~</span> ${this.escapeHtml(item.name)} ${change} (now ${item.quantity})</div>`;
-      }).join('');
+        const changedHtml = diff.changed
+          .map((item) => {
+            const icon = this.createItemIcon(item.code || item.name);
+            const change = item.quantityChange > 0 ? `+${item.quantityChange}` : item.quantityChange;
+            return `<div class="diff-item diff-changed">${icon}<span class="diff-symbol">~</span> ${this.escapeHtml(item.name)} ${change} (now ${item.quantity})</div>`;
+          })
+          .join('');
 
-      return `
+        return `
         <div class="inventory-diff-entry">
           <div class="diff-timestamp">${time}</div>
           ${addedHtml}${removedHtml}${changedHtml}
         </div>
       `;
-    }).join('');
+      })
+      .join('');
 
     container.innerHTML = `<div class="diff-list">${diffHtml}</div>`;
   },
@@ -404,7 +425,7 @@ const PlayerInfo = {
         name: name,
         code: code,
         quantity: item.quantity || 1,
-        quality: item.quality
+        quality: item.quality,
       });
     }
 
@@ -417,7 +438,7 @@ const PlayerInfo = {
         name: name,
         code: code,
         quantity: item.quantity || 1,
-        quality: item.quality
+        quality: item.quality,
       });
     }
 
@@ -429,7 +450,7 @@ const PlayerInfo = {
       } else if (prev.quantity !== curr.quantity) {
         changed.push({
           ...curr,
-          quantityChange: curr.quantity - prev.quantity
+          quantityChange: curr.quantity - prev.quantity,
         });
       }
     }
@@ -496,7 +517,8 @@ const PlayerInfo = {
 
     if (!playerPath || !playerPath.points || playerPath.points.length === 0) {
       statsContainer.innerHTML = '';
-      timelineContainer.innerHTML = '<div class="movement-empty">No movement data available. Enable "Show Paths" and select a time range to see movement history.</div>';
+      timelineContainer.innerHTML =
+        '<div class="movement-empty">No movement data available. Enable "Show Paths" and select a time range to see movement history.</div>';
       return;
     }
 
@@ -539,32 +561,39 @@ const PlayerInfo = {
     const recentPoints = points.slice(-50).reverse();
     let prevPoint = null;
 
-    const entriesHtml = recentPoints.map((point, idx) => {
-      const time = new Date(point.timestamp);
-      const timeStr = time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const entriesHtml = recentPoints
+      .map((point, _idx) => {
+        const time = new Date(point.timestamp);
+        const timeStr = time.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
 
-      let distanceStr = '';
-      if (prevPoint) {
-        const dx = point.x - prevPoint.x;
-        const dz = point.z - prevPoint.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist > 0.5) {
-          distanceStr = `+${Math.round(dist)}`;
+        let distanceStr = '';
+        if (prevPoint) {
+          const dx = point.x - prevPoint.x;
+          const dz = point.z - prevPoint.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > 0.5) {
+            distanceStr = `+${Math.round(dist)}`;
+          }
         }
-      }
-      prevPoint = point;
+        prevPoint = point;
 
-      return `
+        return `
         <div class="movement-entry">
           <span class="movement-time">${timeStr}</span>
           <span class="movement-coords">(${Math.round(point.x)}, ${Math.round(point.z)})</span>
           ${distanceStr ? `<span class="movement-distance">${distanceStr}</span>` : ''}
         </div>
       `;
-    }).join('');
+      })
+      .join('');
 
     timelineContainer.innerHTML = entriesHtml || '<div class="movement-empty">No movement data</div>';
-  }
+  },
 };
 
 window.PlayerInfo = PlayerInfo;

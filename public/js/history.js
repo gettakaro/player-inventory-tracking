@@ -14,7 +14,7 @@ const History = {
     endTime: null,
     speed: 5,
     intervalId: null,
-    playbackMarkers: new Map()
+    playbackMarkers: new Map(),
   },
 
   // Generate a color for each player (uses shared ColorUtils)
@@ -70,13 +70,13 @@ const History = {
       }
 
       const color = this.getPlayerColor(playerId);
-      const latlngs = data.points.map(p => GameMap.gameToLatLng(p.x, p.z));
+      const latlngs = data.points.map((p) => GameMap.gameToLatLng(p.x, p.z));
 
       const polyline = L.polyline(latlngs, {
         color: color,
         weight: 3,
         opacity: 0.7,
-        smoothFactor: 1
+        smoothFactor: 1,
       });
 
       // Add popup with player name
@@ -130,7 +130,7 @@ const History = {
       if (!data.points) continue;
       for (const point of data.points) {
         const time = new Date(point.timestamp).getTime();
-        if (!isNaN(time)) {
+        if (Number.isFinite(time)) {
           minTime = Math.min(minTime, time);
           maxTime = Math.max(maxTime, time);
         }
@@ -191,7 +191,7 @@ const History = {
     document.getElementById('playback-controls').style.display = 'none';
 
     // Restore regular markers
-    if (window.App && window.App.gameServerId) {
+    if (window.App?.gameServerId) {
       Players.startAutoRefresh(window.App.gameServerId);
     }
   },
@@ -239,7 +239,7 @@ const History = {
 
   seekTo(percent) {
     const range = this.playbackState.endTime - this.playbackState.startTime;
-    this.playbackState.currentTime = this.playbackState.startTime + (range * percent / 100);
+    this.playbackState.currentTime = this.playbackState.startTime + (range * percent) / 100;
     this.updatePlaybackPosition();
   },
 
@@ -300,20 +300,20 @@ const History = {
           fillColor: color,
           fillOpacity: 0.9,
           color: 'white',
-          weight: 2
+          weight: 2,
         });
 
         marker.bindTooltip(data.name, {
           permanent: true,
           direction: 'top',
-          offset: [0, -10]
+          offset: [0, -10],
         });
 
         marker.addTo(GameMap.map);
         this.playbackState.playbackMarkers.set(playerId, marker);
       }
     }
-  }
+  },
 };
 
 window.History = History;

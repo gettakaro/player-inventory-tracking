@@ -2,7 +2,7 @@
 
 const Heatmap = {
   layer: null,
-  type: 'activity',  // 'activity', 'deaths', 'realtime'
+  type: 'activity', // 'activity', 'deaths', 'realtime'
   isVisible: false,
   filterBySelection: false,
   gameServerId: null,
@@ -18,8 +18,8 @@ const Heatmap = {
       0.6: 'cyan',
       0.7: 'lime',
       0.8: 'yellow',
-      1.0: 'red'
-    }
+      1.0: 'red',
+    },
   },
 
   init(gameServerId) {
@@ -56,7 +56,7 @@ const Heatmap = {
     const radiusSlider = document.getElementById('heatmap-radius');
     if (radiusSlider) {
       radiusSlider.addEventListener('input', (e) => {
-        this.setRadius(parseInt(e.target.value));
+        this.setRadius(parseInt(e.target.value, 10));
       });
     }
 
@@ -64,7 +64,7 @@ const Heatmap = {
     const blurSlider = document.getElementById('heatmap-blur');
     if (blurSlider) {
       blurSlider.addEventListener('input', (e) => {
-        this.setBlur(parseInt(e.target.value));
+        this.setBlur(parseInt(e.target.value, 10));
       });
     }
   },
@@ -161,7 +161,7 @@ const Heatmap = {
       radius: this.config.radius,
       blur: this.config.blur,
       maxZoom: this.config.maxZoom,
-      gradient: this.config.gradient
+      gradient: this.config.gradient,
     });
 
     this.layer.addTo(GameMap.map);
@@ -275,7 +275,7 @@ const Heatmap = {
       this.deathEvents = [];
       await this.refresh();
     }
-  }
+  },
 };
 
 window.Heatmap = Heatmap;

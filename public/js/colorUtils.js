@@ -10,7 +10,7 @@ const ColorUtils = {
     if (saved) {
       try {
         this.customColors = JSON.parse(saved);
-      } catch (e) {
+      } catch (_e) {
         this.customColors = {};
       }
     }
@@ -47,7 +47,7 @@ const ColorUtils = {
   },
 
   // Notify that a color changed - refresh paths and markers
-  notifyColorChange(playerId) {
+  notifyColorChange(_playerId) {
     // Refresh player markers
     if (window.Players && window.App?.gameServerId) {
       Players.refreshVisibility();
@@ -99,7 +99,7 @@ const ColorUtils = {
   },
 
   // Offline players use gray
-  offlineColor: '#6c757d'
+  offlineColor: '#6c757d',
 };
 
 // Initialize on load

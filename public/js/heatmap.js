@@ -2,11 +2,9 @@
 
 const Heatmap = {
   layer: null,
-  type: 'activity', // 'activity', 'deaths', 'realtime'
   isVisible: false,
   filterBySelection: false,
   gameServerId: null,
-  deathEvents: [],
 
   // Configuration
   config: {
@@ -36,14 +34,6 @@ const Heatmap = {
       });
     }
 
-    // Heatmap type selector
-    const heatmapType = document.getElementById('heatmap-type');
-    if (heatmapType) {
-      heatmapType.addEventListener('change', (e) => {
-        this.setType(e.target.value);
-      });
-    }
-
     // Filter by selection toggle
     const filterSelection = document.getElementById('heatmap-filter-selection');
     if (filterSelection) {
@@ -69,21 +59,8 @@ const Heatmap = {
     }
   },
 
-  setType(type) {
-    this.type = type;
-    if (this.isVisible) {
-      this.refresh();
-    }
-  },
-
   setVisible(visible) {
     this.isVisible = visible;
-
-    // Enable/disable type selector
-    const typeSelect = document.getElementById('heatmap-type');
-    if (typeSelect) {
-      typeSelect.disabled = !visible;
-    }
 
     // Show/hide settings
     const settings = document.getElementById('heatmap-settings');
@@ -132,27 +109,15 @@ const Heatmap = {
     }
   },
 
-  async refresh() {
+  refresh() {
     if (!this.isVisible || !GameMap.map) return;
 
     this.clear();
 
-    let points = [];
-
-    switch (this.type) {
-      case 'activity':
-        points = this.generateActivityData();
-        break;
-      case 'deaths':
-        points = await this.generateDeathData();
-        break;
-      case 'realtime':
-        points = this.generateRealtimeData();
-        break;
-    }
+    const points = this.generateActivityData();
 
     if (points.length === 0) {
-      console.log('No heatmap data available for type:', this.type);
+      console.log('No heatmap data available');
       return;
     }
 
@@ -194,73 +159,6 @@ const Heatmap = {
     return points;
   },
 
-  // Generate death heatmap from death events
-  async generateDeathData() {
-    if (!this.gameServerId) return [];
-
-    try {
-      // Load death events if not already loaded or if time range changed
-      const startDate = History.startDate ? History.startDate.toISOString() : null;
-      const endDate = History.endDate ? History.endDate.toISOString() : null;
-
-      this.deathEvents = await API.getDeathEvents(this.gameServerId, startDate, endDate);
-    } catch (error) {
-      console.error('Failed to load death events:', error);
-      return [];
-    }
-
-    if (!this.deathEvents || this.deathEvents.length === 0) {
-      return [];
-    }
-
-    const points = [];
-    const selectedPlayers = window.PlayerList ? PlayerList.selectedPlayers : null;
-
-    for (const event of this.deathEvents) {
-      // Extract position from event meta
-      const position = event.meta?.position || event.position;
-      if (!position || position.x === undefined || position.z === undefined) continue;
-
-      // Filter by selection if enabled
-      if (this.filterBySelection && selectedPlayers && selectedPlayers.size > 0) {
-        const playerId = event.meta?.player?.id || event.playerId;
-        if (playerId && !selectedPlayers.has(String(playerId))) continue;
-      }
-
-      const latlng = GameMap.gameToLatLng(position.x, position.z);
-      // Death events have higher intensity
-      points.push([latlng.lat, latlng.lng, 2.0]);
-    }
-
-    return points;
-  },
-
-  // Generate realtime heatmap from current player positions
-  generateRealtimeData() {
-    if (!Players.all || Players.all.length === 0) {
-      return [];
-    }
-
-    const points = [];
-    const selectedPlayers = window.PlayerList ? PlayerList.selectedPlayers : null;
-
-    for (const player of Players.all) {
-      if (player.x === undefined || player.z === undefined) continue;
-
-      // Filter by selection if enabled
-      if (this.filterBySelection && selectedPlayers && selectedPlayers.size > 0) {
-        if (!selectedPlayers.has(String(player.playerId))) continue;
-      }
-
-      const latlng = GameMap.gameToLatLng(player.x, player.z);
-      // Online players have higher intensity
-      const intensity = player.online ? 2.0 : 0.5;
-      points.push([latlng.lat, latlng.lng, intensity]);
-    }
-
-    return points;
-  },
-
   // Called when player selection changes
   onPlayerSelectionChanged() {
     if (this.isVisible && this.filterBySelection) {
@@ -269,11 +167,9 @@ const Heatmap = {
   },
 
   // Called when time range changes
-  async onTimeRangeChanged() {
+  onTimeRangeChanged() {
     if (this.isVisible) {
-      // Clear cached death events to force reload
-      this.deathEvents = [];
-      await this.refresh();
+      this.refresh();
     }
   },
 };

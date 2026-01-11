@@ -276,8 +276,9 @@ app.get('/api/map/:gameServerId/:z/:x/:y.png', requireAuth, async (req, res) => 
   const takaroX = parseInt(x, 10);
   const takaroY = parseInt(y, 10);
 
-  // Disk cache path
-  const tileCachePath = path.join(TILE_CACHE_DIR, gameServerId, z, `${takaroX}_${takaroY}.png`);
+  // Disk cache path - include domain to isolate caches between domains
+  const domain = req.session.domain || 'service';
+  const tileCachePath = path.join(TILE_CACHE_DIR, domain, gameServerId, z, `${takaroX}_${takaroY}.png`);
 
   try {
     // Check disk cache first
@@ -399,24 +400,6 @@ app.get('/api/movement-paths', requireAuth, async (req, res) => {
     }
 
     res.json({ data: paths });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============== EVENTS ROUTES ==============
-
-// Get death events
-app.get('/api/events/deaths', requireAuth, async (req, res) => {
-  const { gameServerId, startDate, endDate } = req.query;
-
-  if (!gameServerId) {
-    return res.status(400).json({ error: 'gameServerId required' });
-  }
-
-  try {
-    const events = await req.session.takaroClient.getDeathEvents(gameServerId, startDate, endDate);
-    res.json({ data: events });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

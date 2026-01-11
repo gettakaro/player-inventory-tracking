@@ -101,27 +101,6 @@ const App = {
     document.getElementById('draw-circle-btn').addEventListener('click', () => {
       AreaSearch.startDrawCircle();
     });
-
-    document.getElementById('area-search-btn').addEventListener('click', async () => {
-      if (!this.gameServerId) return;
-
-      const btn = document.getElementById('area-search-btn');
-      btn.disabled = true;
-      btn.classList.add('loading');
-
-      try {
-        // Trigger search - callback will handle results
-        await AreaSearch.triggerSearch();
-      } finally {
-        btn.disabled = false;
-        btn.classList.remove('loading');
-      }
-    });
-
-    document.getElementById('clear-area-btn').addEventListener('click', () => {
-      AreaSearch.clear();
-      // AreaSearch.clear() now also clears PlayerList filter
-    });
   },
 
   async onTimeRangeChange(startDate, endDate, _presetId) {

@@ -5,6 +5,7 @@ const AreaSearch = {
   drawnItems: null,
   resultsLayer: null,
   currentShape: null,
+  closeButton: null,
   drawingEnabled: false,
   currentDrawHandler: null,
   gameServerId: null,
@@ -65,11 +66,25 @@ const AreaSearch = {
     this.currentShape = e.layer;
     this.drawnItems.addLayer(e.layer);
 
+    // Add close button at top-right corner of shape
+    const bounds = e.layer.getBounds();
+    this.closeButton = L.marker(bounds.getNorthEast(), {
+      icon: L.divIcon({
+        className: 'shape-close-btn-container',
+        html: '<button class="shape-close-btn" title="Remove area">✕</button>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      }),
+    }).addTo(this.drawnItems);
+
+    // Attach click handler to close button
+    this.closeButton.getElement().addEventListener('click', (evt) => {
+      evt.stopPropagation();
+      this.clear();
+    });
+
     // Disable drawing mode
     this.cancelDrawing();
-
-    // Enable search button
-    document.getElementById('area-search-btn').disabled = false;
     this.updateButtonStates();
 
     // Auto-trigger search
@@ -149,8 +164,7 @@ const AreaSearch = {
     this.drawnItems.clearLayers();
     this.resultsLayer.clearLayers();
     this.currentShape = null;
-
-    document.getElementById('area-search-btn').disabled = true;
+    this.closeButton = null;
 
     this.updateButtonStates();
 
@@ -163,14 +177,10 @@ const AreaSearch = {
   updateButtonStates() {
     const rectBtn = document.getElementById('draw-rect-btn');
     const circleBtn = document.getElementById('draw-circle-btn');
-    const searchBtn = document.getElementById('area-search-btn');
 
     // Highlight active drawing mode
     rectBtn.classList.toggle('active', this.drawingEnabled && this.currentDrawHandler instanceof L.Draw.Rectangle);
     circleBtn.classList.toggle('active', this.drawingEnabled && this.currentDrawHandler instanceof L.Draw.Circle);
-
-    // Enable search if shape is drawn
-    searchBtn.disabled = !this.currentShape;
   },
 };
 

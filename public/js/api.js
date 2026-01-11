@@ -207,16 +207,6 @@ const API = {
     });
     return data.data || [];
   },
-
-  // Death Events (for heatmap)
-  async getDeathEvents(gameServerId, startDate, endDate) {
-    let url = `/api/events/deaths?gameServerId=${gameServerId}`;
-    if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
-    if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
-
-    const data = await this.request(url);
-    return data.data || [];
-  },
 };
 
 window.API = API;

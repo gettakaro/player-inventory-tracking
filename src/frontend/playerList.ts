@@ -1,37 +1,92 @@
 // Player list panel management
 
-const PlayerList = {
+import type { AreaSearchResult, DateRange, InventoryItem, ItemSearchResult, Player } from './types.js';
+
+interface CollapsedGroups {
+  online: boolean;
+  offline: boolean;
+  [key: string]: boolean;
+}
+
+interface PlayerListModule {
+  isCollapsed: boolean;
+  searchTerm: string;
+  players: Player[];
+  selectedPlayers: Set<string>;
+  hasInitializedSelection: boolean;
+  collapsedGroups: CollapsedGroups;
+  areaFilterActive: boolean;
+  areaFilterPlayerIds: Set<string>;
+  timeFilterEnabled: boolean;
+  itemFilterActive: boolean;
+  itemFilterPlayerIds: Set<string>;
+  itemFilterName: string;
+
+  init(): void;
+  setupEventListeners(): void;
+  toggle(): void;
+  toggleGroup(group: string): void;
+  saveState(): void;
+  restoreState(): void;
+  updatePlayers(players: Player[]): void;
+  render(): void;
+  updateGroupCheckbox(checkboxId: string, players: Player[]): void;
+  renderPlayerList(players: Player[], isOnline: boolean): string;
+  attachClickHandlers(): void;
+  focusPlayer(playerId: string): void;
+  formatLastSeen(timestamp: string): string;
+  escapeHtml(text: string): string;
+  clear(): void;
+  isSelected(playerId: string | number): boolean;
+  toggleSelection(playerId: string | number): void;
+  selectAll(): void;
+  deselectAll(): void;
+  selectAllByStatus(isOnline: boolean, select: boolean): void;
+  getFilteredPlayers(): Player[];
+  notifySelectionChange(): void;
+  selectOnly(playerIds: string[]): void;
+  getSelectedTakaroIds(): Set<string>;
+  setAreaFilter(playerIds: string[]): void;
+  clearAreaFilter(): void;
+  onTimeRangeChange(): void;
+  updateFilterIndicator(): void;
+  setItemFilter(playerIds: string[], itemName: string): void;
+  clearItemFilter(): void;
+}
+
+const PlayerList: PlayerListModule = {
   isCollapsed: false,
   searchTerm: '',
   players: [],
-  selectedPlayers: new Set(), // Track selected player IDs
+  selectedPlayers: new Set<string>(), // Track selected player IDs
   hasInitializedSelection: false, // Track if we've done initial selection
   collapsedGroups: { online: false, offline: false }, // Track collapsed state
   areaFilterActive: false, // Track if area filter is active
-  areaFilterPlayerIds: new Set(), // Player IDs from area search
+  areaFilterPlayerIds: new Set<string>(), // Player IDs from area search
   timeFilterEnabled: true, // Filter offline players by time range
   itemFilterActive: false, // Track if item filter is active (set by PlayerInfo)
-  itemFilterPlayerIds: new Set(), // Player IDs from item search
+  itemFilterPlayerIds: new Set<string>(), // Player IDs from item search
   itemFilterName: '', // Name of the item being filtered
 
-  init() {
+  init(): void {
     this.setupEventListeners();
     this.restoreState();
   },
 
-  setupEventListeners() {
+  setupEventListeners(): void {
     // Toggle button
-    document.getElementById('player-list-toggle').addEventListener('click', () => {
+    document.getElementById('player-list-toggle')?.addEventListener('click', () => {
       this.toggle();
     });
 
     // Search input (sidebar)
-    document.getElementById('player-search').addEventListener('input', (e) => {
-      this.searchTerm = e.target.value.toLowerCase().trim();
+    document.getElementById('player-search')?.addEventListener('input', (e) => {
+      const target = e.target as HTMLInputElement;
+      this.searchTerm = target.value.toLowerCase().trim();
       // Sync with top search bar
-      const topSearch = document.getElementById('top-player-search');
-      if (topSearch && topSearch.value !== e.target.value) {
-        topSearch.value = e.target.value;
+      const topSearch = document.getElementById('top-player-search') as HTMLInputElement | null;
+      if (topSearch && topSearch.value !== target.value) {
+        topSearch.value = target.value;
       }
       this.render();
     });
@@ -40,11 +95,12 @@ const PlayerList = {
     const topSearch = document.getElementById('top-player-search');
     if (topSearch) {
       topSearch.addEventListener('input', (e) => {
-        this.searchTerm = e.target.value.toLowerCase().trim();
+        const target = e.target as HTMLInputElement;
+        this.searchTerm = target.value.toLowerCase().trim();
         // Sync with sidebar search
-        const sidebarSearch = document.getElementById('player-search');
-        if (sidebarSearch && sidebarSearch.value !== e.target.value) {
-          sidebarSearch.value = e.target.value;
+        const sidebarSearch = document.getElementById('player-search') as HTMLInputElement | null;
+        if (sidebarSearch && sidebarSearch.value !== target.value) {
+          sidebarSearch.value = target.value;
         }
         this.render();
       });
@@ -54,15 +110,16 @@ const PlayerList = {
     const panel = document.getElementById('player-list-panel');
     if (panel) {
       panel.addEventListener('click', (e) => {
-        if (e.target.id === 'select-all-btn') {
+        const target = e.target as HTMLElement;
+        if (target.id === 'select-all-btn') {
           this.selectAll();
-        } else if (e.target.id === 'deselect-all-btn') {
+        } else if (target.id === 'deselect-all-btn') {
           this.deselectAll();
         }
 
         // Handle group header clicks for collapse/expand
-        const header = e.target.closest('.player-group-header');
-        if (header && !e.target.classList.contains('group-select-checkbox')) {
+        const header = target.closest('.player-group-header') as HTMLElement | null;
+        if (header && !target.classList.contains('group-select-checkbox')) {
           const group = header.dataset.group;
           if (group) {
             this.toggleGroup(group);
@@ -70,23 +127,24 @@ const PlayerList = {
         }
       });
       panel.addEventListener('change', (e) => {
-        if (e.target.id === 'select-all-online') {
-          this.selectAllByStatus(true, e.target.checked);
-        } else if (e.target.id === 'select-all-offline') {
-          this.selectAllByStatus(false, e.target.checked);
+        const target = e.target as HTMLInputElement;
+        if (target.id === 'select-all-online') {
+          this.selectAllByStatus(true, target.checked);
+        } else if (target.id === 'select-all-offline') {
+          this.selectAllByStatus(false, target.checked);
         }
       });
     }
   },
 
-  toggle() {
+  toggle(): void {
     this.isCollapsed = !this.isCollapsed;
     const panel = document.getElementById('player-list-panel');
-    panel.classList.toggle('collapsed', this.isCollapsed);
+    panel?.classList.toggle('collapsed', this.isCollapsed);
     this.saveState();
   },
 
-  toggleGroup(group) {
+  toggleGroup(group: string): void {
     this.collapsedGroups[group] = !this.collapsedGroups[group];
     const groupEl = document.getElementById(`${group}-players-group`);
     if (groupEl) {
@@ -95,16 +153,16 @@ const PlayerList = {
     this.saveState();
   },
 
-  saveState() {
-    localStorage.setItem('playerListCollapsed', this.isCollapsed);
+  saveState(): void {
+    localStorage.setItem('playerListCollapsed', String(this.isCollapsed));
     localStorage.setItem('playerListCollapsedGroups', JSON.stringify(this.collapsedGroups));
   },
 
-  restoreState() {
+  restoreState(): void {
     const saved = localStorage.getItem('playerListCollapsed');
     if (saved === 'true') {
       this.isCollapsed = true;
-      document.getElementById('player-list-panel').classList.add('collapsed');
+      document.getElementById('player-list-panel')?.classList.add('collapsed');
     }
 
     // Restore collapsed groups state
@@ -126,7 +184,7 @@ const PlayerList = {
   },
 
   // Called by Players.update() to sync data
-  updatePlayers(players) {
+  updatePlayers(players: Player[]): void {
     // Auto-select only online players on very first load
     if (!this.hasInitializedSelection) {
       players.forEach((p) => {
@@ -149,16 +207,18 @@ const PlayerList = {
     this.render();
   },
 
-  render() {
+  render(): void {
     const onlineList = document.getElementById('online-players-list');
     const offlineList = document.getElementById('offline-players-list');
+
+    if (!onlineList || !offlineList) return;
 
     // Start with all players
     let filteredPlayers = this.players;
 
     // Apply time filter based on lastSeen (if TimeRange is available)
     if (this.timeFilterEnabled && window.TimeRange) {
-      const { start, end } = TimeRange.getDateRange();
+      const { start, end }: DateRange = window.TimeRange.getDateRange();
       const startTime = start.getTime();
       const endTime = end.getTime();
 
@@ -231,8 +291,8 @@ const PlayerList = {
     this.attachClickHandlers();
   },
 
-  updateGroupCheckbox(checkboxId, players) {
-    const checkbox = document.getElementById(checkboxId);
+  updateGroupCheckbox(checkboxId: string, players: Player[]): void {
+    const checkbox = document.getElementById(checkboxId) as HTMLInputElement | null;
     if (!checkbox || players.length === 0) {
       if (checkbox) {
         checkbox.checked = false;
@@ -253,7 +313,7 @@ const PlayerList = {
     }
   },
 
-  renderPlayerList(players, isOnline) {
+  renderPlayerList(players: Player[], isOnline: boolean): string {
     if (players.length === 0) {
       return `<li class="player-list-empty">No ${isOnline ? 'online' : 'offline'} players</li>`;
     }
@@ -274,7 +334,9 @@ const PlayerList = {
 
         // Get player color - online players get unique colors, offline are gray
         const playerColor =
-          isOnline && player.playerId ? ColorUtils.getPlayerColor(player.playerId) : ColorUtils.offlineColor;
+          isOnline && player.playerId
+            ? window.ColorUtils.getPlayerColor(player.playerId)
+            : window.ColorUtils.offlineColor;
 
         return `
         <li class="player-list-item ${loadingClass}" data-player-id="${player.id}">
@@ -294,12 +356,16 @@ const PlayerList = {
       .join('');
   },
 
-  attachClickHandlers() {
+  attachClickHandlers(): void {
     // Checkbox handlers
     document.querySelectorAll('.player-select-checkbox').forEach((checkbox) => {
       checkbox.addEventListener('change', (e) => {
         e.stopPropagation();
-        this.toggleSelection(checkbox.dataset.playerId);
+        const target = e.target as HTMLInputElement;
+        const playerId = target.dataset.playerId;
+        if (playerId) {
+          this.toggleSelection(playerId);
+        }
       });
       checkbox.addEventListener('click', (e) => e.stopPropagation());
     });
@@ -307,49 +373,54 @@ const PlayerList = {
     // Row click handlers (for map focus)
     document.querySelectorAll('.player-list-item').forEach((item) => {
       item.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('player-select-checkbox')) {
-          this.focusPlayer(item.dataset.playerId);
+        const target = e.target as HTMLElement;
+        if (!target.classList.contains('player-select-checkbox')) {
+          const itemEl = item as HTMLElement;
+          const playerId = itemEl.dataset.playerId;
+          if (playerId) {
+            this.focusPlayer(playerId);
+          }
         }
       });
     });
   },
 
-  focusPlayer(playerId) {
-    if (!GameMap.map) return;
+  focusPlayer(playerId: string): void {
+    if (!window.GameMap.map) return;
 
     // Try to find marker - check both string and number keys
-    let marker = Players.markers.get(playerId);
+    let marker = window.Players.markers.get(playerId);
     if (!marker) {
-      marker = Players.markers.get(parseInt(playerId, 10));
+      marker = window.Players.markers.get(parseInt(playerId, 10));
     }
     if (!marker) {
-      marker = Players.markers.get(String(playerId));
+      marker = window.Players.markers.get(String(playerId));
     }
 
     if (marker) {
       // Pan to player location and open popup
-      GameMap.map.setView(marker.getLatLng(), Math.max(GameMap.map.getZoom(), 2));
+      window.GameMap.map.setView(marker.getLatLng(), Math.max(window.GameMap.map.getZoom(), 2));
       marker.openPopup();
     } else {
       // Marker might be hidden - find player in our data and pan to coords
       const player = this.players.find((p) => String(p.id) === String(playerId));
       if (player && player.x !== null && player.z !== null) {
-        const pos = GameMap.gameToLatLng(player.x, player.z);
-        GameMap.map.setView(pos, Math.max(GameMap.map.getZoom(), 2));
+        const pos = window.GameMap.gameToLatLng(player.x, player.z);
+        window.GameMap.map.setView(pos, Math.max(window.GameMap.map.getZoom(), 2));
       }
     }
 
     // Show player info panel
     const player = this.players.find((p) => String(p.id) === String(playerId));
     if (player && window.PlayerInfo) {
-      PlayerInfo.showPlayer(player.playerId || playerId);
+      window.PlayerInfo.showPlayer(player.playerId || playerId);
     }
   },
 
-  formatLastSeen(timestamp) {
+  formatLastSeen(timestamp: string): string {
     const date = new Date(timestamp);
     const now = new Date();
-    const diffMs = now - date;
+    const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
@@ -361,14 +432,14 @@ const PlayerList = {
     return date.toLocaleDateString();
   },
 
-  escapeHtml(text) {
+  escapeHtml(text: string): string {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
   },
 
   // Clear the list (called when logging out)
-  clear() {
+  clear(): void {
     this.players = [];
     this.searchTerm = '';
     this.selectedPlayers.clear();
@@ -378,11 +449,11 @@ const PlayerList = {
     this.itemFilterActive = false;
     this.itemFilterPlayerIds.clear();
     this.itemFilterName = '';
-    const searchInput = document.getElementById('player-search');
+    const searchInput = document.getElementById('player-search') as HTMLInputElement | null;
     if (searchInput) {
       searchInput.value = '';
     }
-    const topSearchInput = document.getElementById('top-player-search');
+    const topSearchInput = document.getElementById('top-player-search') as HTMLInputElement | null;
     if (topSearchInput) {
       topSearchInput.value = '';
     }
@@ -391,11 +462,11 @@ const PlayerList = {
   },
 
   // Selection methods
-  isSelected(playerId) {
+  isSelected(playerId: string | number): boolean {
     return this.selectedPlayers.has(String(playerId));
   },
 
-  toggleSelection(playerId) {
+  toggleSelection(playerId: string | number): void {
     const id = String(playerId);
     if (this.selectedPlayers.has(id)) {
       this.selectedPlayers.delete(id);
@@ -406,7 +477,7 @@ const PlayerList = {
     this.notifySelectionChange();
   },
 
-  selectAll() {
+  selectAll(): void {
     for (const p of this.getFilteredPlayers()) {
       this.selectedPlayers.add(String(p.id));
     }
@@ -414,7 +485,7 @@ const PlayerList = {
     this.notifySelectionChange();
   },
 
-  deselectAll() {
+  deselectAll(): void {
     for (const p of this.getFilteredPlayers()) {
       this.selectedPlayers.delete(String(p.id));
     }
@@ -422,7 +493,7 @@ const PlayerList = {
     this.notifySelectionChange();
   },
 
-  selectAllByStatus(isOnline, select) {
+  selectAllByStatus(isOnline: boolean, select: boolean): void {
     const players = this.getFilteredPlayers().filter((p) => {
       const playerOnline = p.online === 1 || p.online === true;
       return isOnline ? playerOnline : !playerOnline;
@@ -438,27 +509,27 @@ const PlayerList = {
     this.notifySelectionChange();
   },
 
-  getFilteredPlayers() {
+  getFilteredPlayers(): Player[] {
     return this.players.filter((p) => !this.searchTerm || p.name.toLowerCase().includes(this.searchTerm));
   },
 
-  notifySelectionChange() {
+  notifySelectionChange(): void {
     if (window.Players) {
-      Players.updateSelectionVisibility(this.selectedPlayers);
+      window.Players.updateSelectionVisibility(this.selectedPlayers);
     }
     // Also redraw paths if visible to respect player selection
-    if (window.History && History.isVisible) {
-      History.drawPaths();
+    if (window.History && window.History.isVisible) {
+      window.History.drawPaths();
     }
     // Refresh heatmap if filtering by selection
     if (window.Heatmap) {
-      Heatmap.onPlayerSelectionChanged();
+      window.Heatmap.onPlayerSelectionChanged();
     }
   },
 
   // Select only specific players (used by area search)
   // playerIds can be either local IDs or Takaro playerIds
-  selectOnly(playerIds) {
+  selectOnly(playerIds: string[]): void {
     // Clear all selections first
     this.selectedPlayers.clear();
 
@@ -480,14 +551,14 @@ const PlayerList = {
 
   // Get Takaro playerIds (UUIDs) for selected players that pass current filters
   // selectedPlayers uses POG IDs (PlayerOnGameServer), but paths use playerId (Player UUID)
-  getSelectedTakaroIds() {
-    const takaroIds = new Set();
+  getSelectedTakaroIds(): Set<string> {
+    const takaroIds = new Set<string>();
 
     // Get time range for filtering
-    let startTime = null;
-    let endTime = null;
+    let startTime: number | null = null;
+    let endTime: number | null = null;
     if (this.timeFilterEnabled && window.TimeRange) {
-      const { start, end } = TimeRange.getDateRange();
+      const { start, end }: DateRange = window.TimeRange.getDateRange();
       startTime = start.getTime();
       endTime = end.getTime();
     }
@@ -509,7 +580,7 @@ const PlayerList = {
   },
 
   // Area filter methods - filter the player list to only show players from area search
-  setAreaFilter(playerIds) {
+  setAreaFilter(playerIds: string[]): void {
     this.areaFilterActive = true;
     this.areaFilterPlayerIds.clear();
     for (const id of playerIds) {
@@ -520,7 +591,7 @@ const PlayerList = {
     this.render();
   },
 
-  clearAreaFilter() {
+  clearAreaFilter(): void {
     this.areaFilterActive = false;
     this.areaFilterPlayerIds.clear();
     this.updateFilterIndicator();
@@ -528,12 +599,12 @@ const PlayerList = {
   },
 
   // Called when time range changes - re-render with new filter
-  onTimeRangeChange() {
+  onTimeRangeChange(): void {
     this.render();
     this.notifySelectionChange();
   },
 
-  updateFilterIndicator() {
+  updateFilterIndicator(): void {
     let indicator = document.getElementById('area-filter-indicator');
 
     if (this.areaFilterActive) {
@@ -559,7 +630,7 @@ const PlayerList = {
         clearBtn.addEventListener('click', () => {
           this.clearAreaFilter();
           if (window.AreaSearch) {
-            AreaSearch.clear();
+            window.AreaSearch.clear();
           }
         });
       }
@@ -569,7 +640,7 @@ const PlayerList = {
   },
 
   // Item filter methods - called by PlayerInfo when item search completes
-  setItemFilter(playerIds, itemName) {
+  setItemFilter(playerIds: string[], itemName: string): void {
     this.itemFilterActive = true;
     this.itemFilterPlayerIds.clear();
     for (const id of playerIds) {
@@ -580,7 +651,7 @@ const PlayerList = {
     this.render();
   },
 
-  clearItemFilter() {
+  clearItemFilter(): void {
     this.itemFilterActive = false;
     this.itemFilterPlayerIds.clear();
     this.itemFilterName = '';
@@ -588,4 +659,5 @@ const PlayerList = {
   },
 };
 
+export { PlayerList };
 window.PlayerList = PlayerList;

@@ -1,20 +1,24 @@
 // Player marker management
 
-const Players = {
-  markers: new Map(),
-  inventories: new Map(), // Store inventory by player ID
-  allPlayers: [], // Store all players for lookup by other modules
+import type { InventoryItem, Player } from './types.js';
+
+declare const L: typeof import('leaflet');
+
+export const Players = {
+  markers: new Map<string | number, L.Marker>(),
+  inventories: new Map<string, InventoryItem[]>(),
+  allPlayers: [] as Player[],
   showOnline: true,
   showOffline: true,
-  selectedPlayers: new Set(), // Track selected player IDs for visibility
-  refreshInterval: null,
-  gameServerId: null,
+  selectedPlayers: new Set<string>(),
+  refreshInterval: null as ReturnType<typeof setInterval> | null,
+  gameServerId: null as string | null,
 
   // Create custom marker icons with player-specific colors
-  createIcon(online, playerId = null) {
+  createIcon(online: boolean, playerId: string | null = null): L.DivIcon {
     const size = 24;
     // Online players get unique colors based on their ID, offline players are gray
-    const color = online && playerId ? ColorUtils.getPlayerColor(playerId) : ColorUtils.offlineColor;
+    const color = online && playerId ? window.ColorUtils.getPlayerColor(playerId) : window.ColorUtils.offlineColor;
 
     const personSvg = `
       <svg viewBox="0 0 24 24" width="${size}" height="${size}">
@@ -30,7 +34,7 @@ const Players = {
     });
   },
 
-  formatPlaytime(seconds) {
+  formatPlaytime(seconds: number | undefined): string | null {
     if (!seconds) return null;
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -40,21 +44,21 @@ const Players = {
     return `${minutes}m`;
   },
 
-  formatCurrency(amount) {
+  formatCurrency(amount: number | undefined | null): string | null {
     if (amount === null || amount === undefined) return null;
     return amount.toLocaleString();
   },
 
-  createInventoryTable(inventory) {
+  createInventoryTable(inventory: InventoryItem[] | undefined): string {
     if (!inventory || !Array.isArray(inventory) || inventory.length === 0) {
       return '<p class="inventory-empty">No inventory data available</p>';
     }
 
     // The Takaro API returns a flat array of items
     // Group by timestamp to get the most recent snapshot
-    const byTimestamp = {};
+    const byTimestamp: Record<string, InventoryItem[]> = {};
     for (const item of inventory) {
-      const ts = item.createdAt;
+      const ts = item.createdAt || '';
       if (!byTimestamp[ts]) byTimestamp[ts] = [];
       byTimestamp[ts].push(item);
     }
@@ -95,10 +99,10 @@ const Players = {
     `;
   },
 
-  createPopupContent(player) {
+  createPopupContent(player: Player): string {
     const lastSeen = player.lastSeen ? new Date(player.lastSeen).toLocaleString() : 'Now';
 
-    const profileUrl = player.playerId ? `${Auth.dashboardUrl}/player/${player.playerId}/info` : null;
+    const profileUrl = player.playerId ? `${window.Auth.dashboardUrl}/player/${player.playerId}/info` : null;
 
     const playtime = this.formatPlaytime(player.playtimeSeconds);
     const currency = this.formatCurrency(player.currency);
@@ -110,8 +114,8 @@ const Players = {
     return `
       <div class="player-popup">
         <h4>${player.name}</h4>
-        <p><strong>Position:</strong> X: ${Math.round(player.x)}, Z: ${Math.round(player.z)}</p>
-        ${player.y !== null ? `<p><strong>Height:</strong> ${Math.round(player.y)}</p>` : ''}
+        <p><strong>Position:</strong> X: ${Math.round(player.x!)}, Z: ${Math.round(player.z!)}</p>
+        ${player.y !== null ? `<p><strong>Height:</strong> ${Math.round(player.y!)}</p>` : ''}
         <p>
           <span class="online-status ${player.online ? 'online' : 'offline'}">
             ${player.online ? 'Online' : 'Offline'}
@@ -127,27 +131,27 @@ const Players = {
     `;
   },
 
-  async update(gameServerId) {
-    if (!GameMap.map) return;
+  async update(gameServerId: string): Promise<void> {
+    if (!window.GameMap.map) return;
 
     this.gameServerId = gameServerId;
 
     try {
       // Get all players from Takaro API (now returns both online and offline)
-      const players = await API.getPlayers(gameServerId);
+      const players: Player[] = await window.API.getPlayers(gameServerId);
 
       // Store for lookup by other modules (e.g., AreaSearch)
       this.allPlayers = players;
 
-      const currentIds = new Set();
+      const currentIds = new Set<string | number>();
       let onlineCount = 0;
       let offlineCount = 0;
 
       // Get time range for filtering offline players
-      let startTime = null;
-      let endTime = null;
+      let startTime: number | null = null;
+      let endTime: number | null = null;
       if (window.TimeRange) {
-        const { start, end } = TimeRange.getDateRange();
+        const { start, end } = window.TimeRange.getDateRange();
         startTime = start.getTime();
         endTime = end.getTime();
       }
@@ -178,14 +182,14 @@ const Players = {
         }
 
         currentIds.add(player.id);
-        const pos = GameMap.gameToLatLng(player.x, player.z);
+        const pos = window.GameMap.gameToLatLng(player.x, player.z);
 
         if (this.markers.has(player.id)) {
           // Update existing marker
-          const marker = this.markers.get(player.id);
+          const marker = this.markers.get(player.id)!;
           marker.setLatLng(pos);
           marker.setIcon(this.createIcon(isOnline, player.playerId));
-          marker.getPopup().setContent(this.createPopupContent(player));
+          marker.getPopup()?.setContent(this.createPopupContent(player));
         } else {
           // Create new marker
           const marker = L.marker(pos, {
@@ -197,11 +201,11 @@ const Players = {
           // Add click handler to show player info panel
           marker.on('click', () => {
             if (window.PlayerInfo) {
-              PlayerInfo.showPlayer(player.playerId || player.id);
+              window.PlayerInfo.showPlayer(player.playerId || player.id);
             }
           });
 
-          marker.addTo(GameMap.map);
+          marker.addTo(window.GameMap.map!);
           this.markers.set(player.id, marker);
         }
       }
@@ -215,16 +219,22 @@ const Players = {
       }
 
       // Update status
-      document.getElementById('player-count').textContent = `Players: ${onlineCount} online, ${offlineCount} offline`;
-      document.getElementById('last-update').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+      const playerCountEl = document.getElementById('player-count');
+      if (playerCountEl) {
+        playerCountEl.textContent = `Players: ${onlineCount} online, ${offlineCount} offline`;
+      }
+      const lastUpdateEl = document.getElementById('last-update');
+      if (lastUpdateEl) {
+        lastUpdateEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+      }
 
       // Sync with player list panel
       if (window.PlayerList) {
-        const needsRefresh = !PlayerList.hasInitializedSelection;
-        PlayerList.updatePlayers(players);
+        const needsRefresh = !window.PlayerList.hasInitializedSelection;
+        window.PlayerList.updatePlayers(players);
         // If this was the first initialization, refresh visibility with the new selection
-        if (needsRefresh && PlayerList.selectedPlayers.size > 0) {
-          this.selectedPlayers = PlayerList.selectedPlayers;
+        if (needsRefresh && window.PlayerList.selectedPlayers.size > 0) {
+          this.selectedPlayers = window.PlayerList.selectedPlayers;
           this.refreshVisibility();
         }
       }
@@ -233,9 +243,9 @@ const Players = {
     }
   },
 
-  async loadPlayerInventory(playerId) {
+  async loadPlayerInventory(playerId: string): Promise<InventoryItem[] | null> {
     try {
-      const inventory = await API.getPlayerInventory(playerId);
+      const inventory = await window.API.getPlayerInventory(playerId);
       this.inventories.set(playerId, inventory);
 
       // Update the inventory container in the popup if it exists
@@ -246,40 +256,96 @@ const Players = {
 
       return inventory;
     } catch (error) {
-      console.warn('Failed to fetch inventory for player:', playerId, error.message);
+      console.warn('Failed to fetch inventory for player:', playerId, (error as Error).message);
       return null;
     }
   },
 
-  setShowOnline(show) {
+  setShowOnline(show: boolean): void {
     this.showOnline = show;
     this.refreshVisibility();
   },
 
-  setShowOffline(show) {
+  setShowOffline(show: boolean): void {
     this.showOffline = show;
     this.refreshVisibility();
   },
 
-  updateSelectionVisibility(selectedSet) {
+  updateSelectionVisibility(selectedSet: Set<string>): void {
     this.selectedPlayers = selectedSet;
     this.refreshVisibility();
   },
 
-  refreshVisibility() {
-    // Remove all markers and re-add based on visibility
-    for (const [_id, marker] of this.markers) {
-      marker.remove();
-    }
-    this.markers.clear();
+  refreshVisibility(): void {
+    if (!window.GameMap.map) return;
 
-    // Trigger a full update
-    if (window.App?.gameServerId) {
-      this.update(window.App.gameServerId);
+    // Get time range for filtering offline players
+    let startTime: number | null = null;
+    let endTime: number | null = null;
+    if (window.TimeRange) {
+      const { start, end } = window.TimeRange.getDateRange();
+      startTime = start.getTime();
+      endTime = end.getTime();
+    }
+
+    // Toggle visibility of markers without refetching from API
+    for (const player of this.allPlayers) {
+      // Skip players without valid coordinates
+      if (player.x === null || player.z === null) continue;
+
+      const isOnline = player.online === 1 || player.online === true;
+
+      // Determine if marker should be visible
+      let shouldShow = true;
+
+      // Check visibility settings
+      if (isOnline && !this.showOnline) shouldShow = false;
+      if (!isOnline && !this.showOffline) shouldShow = false;
+
+      // Check time range for offline players
+      if (!isOnline && startTime && endTime && player.lastSeen) {
+        const lastSeenTime = new Date(player.lastSeen).getTime();
+        if (lastSeenTime < startTime || lastSeenTime > endTime) shouldShow = false;
+      }
+
+      // Check player selection
+      if (this.selectedPlayers.size > 0 && !this.selectedPlayers.has(String(player.id))) {
+        shouldShow = false;
+      }
+
+      const existingMarker = this.markers.get(player.id);
+
+      if (shouldShow) {
+        if (existingMarker) {
+          // Show existing marker
+          if (!window.GameMap.map!.hasLayer(existingMarker)) {
+            existingMarker.addTo(window.GameMap.map!);
+          }
+        } else {
+          // Create marker for newly visible player
+          const pos = window.GameMap.gameToLatLng(player.x, player.z);
+          const marker = L.marker(pos, {
+            icon: this.createIcon(isOnline, player.playerId),
+          });
+          marker.bindPopup(this.createPopupContent(player));
+          marker.on('click', () => {
+            if (window.PlayerInfo) {
+              window.PlayerInfo.showPlayer(player.playerId || player.id);
+            }
+          });
+          marker.addTo(window.GameMap.map!);
+          this.markers.set(player.id, marker);
+        }
+      } else {
+        // Hide marker if it exists
+        if (existingMarker && window.GameMap.map!.hasLayer(existingMarker)) {
+          existingMarker.remove();
+        }
+      }
     }
   },
 
-  startAutoRefresh(gameServerId, intervalMs = 30000) {
+  startAutoRefresh(gameServerId: string, intervalMs: number = 30000): void {
     this.stopAutoRefresh();
 
     // Initial update
@@ -291,14 +357,14 @@ const Players = {
     }, intervalMs);
   },
 
-  stopAutoRefresh() {
+  stopAutoRefresh(): void {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
       this.refreshInterval = null;
     }
   },
 
-  clear() {
+  clear(): void {
     this.stopAutoRefresh();
 
     for (const marker of this.markers.values()) {
@@ -308,24 +374,25 @@ const Players = {
     this.inventories.clear();
 
     if (window.PlayerList) {
-      PlayerList.clear();
+      window.PlayerList.clear();
     }
   },
 };
 
 // Handle inventory load button clicks (delegated event)
-document.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('load-inventory-btn')) {
-    const playerId = e.target.dataset.playerId;
+document.addEventListener('click', async (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (target.classList.contains('load-inventory-btn')) {
+    const playerId = target.dataset.playerId;
 
     if (playerId) {
-      e.target.disabled = true;
-      e.target.textContent = 'Loading...';
+      (target as HTMLButtonElement).disabled = true;
+      target.textContent = 'Loading...';
 
       await Players.loadPlayerInventory(playerId);
 
-      e.target.textContent = 'Refresh Inventory';
-      e.target.disabled = false;
+      target.textContent = 'Refresh Inventory';
+      (target as HTMLButtonElement).disabled = false;
     }
   }
 });

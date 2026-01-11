@@ -1,29 +1,230 @@
-// Dynamic import for ES module SDK
-let Client;
-let serviceClient = null;
-let operationMode = null; // 'service' | 'cookie'
+import { cache, TTL } from './cache.js';
 
-const { cache, TTL } = require('./cache');
+// Types for Takaro API responses
+interface TakaroGameServer {
+  id: string;
+  name: string;
+  type: string;
+  [key: string]: unknown;
+}
+
+interface TakaroPOG {
+  id: string;
+  playerId: string;
+  player?: {
+    name?: string;
+    steamId?: string;
+  };
+  positionX: number | null;
+  positionY: number | null;
+  positionZ: number | null;
+  ping?: number;
+  currency?: number;
+  playtimeSeconds?: number;
+  lastSeen?: string;
+  online?: boolean | number;
+}
+
+interface TakaroPlayer {
+  id: string;
+  name: string;
+  steamId?: string;
+  [key: string]: unknown;
+}
+
+interface TakaroMapInfo {
+  mapSizeX?: number;
+  maxZoom?: number;
+  [key: string]: unknown;
+}
+
+interface TakaroItem {
+  id: string;
+  name: string;
+  code?: string;
+  [key: string]: unknown;
+}
+
+interface TakaroTrackingResult {
+  playerId: string;
+  playerName?: string;
+  x: number;
+  y: number;
+  z: number;
+  createdAt?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
+interface MovementPoint {
+  x: number;
+  y: number;
+  z: number;
+  timestamp: string;
+}
+
+interface MovementPath {
+  name: string;
+  points: MovementPoint[];
+}
+
+interface NormalizedPlayer {
+  id: string;
+  playerId: string;
+  name: string;
+  steamId?: string;
+  x: number | null;
+  y: number | null;
+  z: number | null;
+  ping?: number;
+  currency?: number;
+  playtimeSeconds?: number;
+  lastSeen?: string;
+  online: boolean | number;
+}
+
+// Dynamic import for ES module SDK
+let Client: new (options: {
+  url: string;
+  auth: { username?: string; password?: string };
+  log: boolean;
+}) => TakaroSDKClient;
+
+interface TakaroSDKClient {
+  login(): Promise<void>;
+  setHeader(name: string, value: string): void;
+  axiosInstance: {
+    get(url: string, options?: { responseType?: string }): Promise<{ data: ArrayBuffer }>;
+    defaults?: {
+      headers?: {
+        common?: {
+          Cookie?: string;
+        };
+      };
+    };
+  };
+  user: {
+    userControllerMe(): Promise<{
+      data: {
+        data?: {
+          domains?: Array<{ id: string; name: string }>;
+        };
+      };
+    }>;
+    userControllerSetSelectedDomain(domainId: string): Promise<void>;
+  };
+  gameserver: {
+    gameServerControllerSearch(params: {
+      filters?: { type?: string[] };
+      sortBy?: string;
+      sortDirection?: string;
+      limit?: number;
+    }): Promise<{ data: { data: TakaroGameServer[] } }>;
+    gameServerControllerGetMapInfo(gameServerId: string): Promise<{
+      data: { data: TakaroMapInfo };
+    }>;
+  };
+  playerOnGameserver: {
+    playerOnGameServerControllerSearch(params: {
+      filters: { gameServerId: string[] };
+      extend?: string[];
+      page?: number;
+      limit?: number;
+    }): Promise<{
+      data: {
+        data: TakaroPOG[];
+        meta?: { total?: number };
+      };
+    }>;
+  };
+  player: {
+    playerControllerSearch(params: {
+      filters?: { id?: string[] };
+      sortBy?: string;
+      sortDirection?: string;
+      page?: number;
+      limit?: number;
+    }): Promise<{
+      data: {
+        data: TakaroPlayer[];
+        meta?: { total?: number };
+      };
+    }>;
+  };
+  item: {
+    itemControllerSearch(params: {
+      filters?: { gameserverId?: string[] };
+      search?: { name?: string[] };
+      limit?: number;
+    }): Promise<{
+      data: { data: TakaroItem[] };
+    }>;
+  };
+  tracking: {
+    trackingControllerGetBoundingBoxPlayers(body: {
+      gameserverId: string;
+      minX: number;
+      maxX: number;
+      minY: number;
+      maxY: number;
+      minZ: number;
+      maxZ: number;
+      startDate?: string;
+      endDate?: string;
+    }): Promise<{ data: { data: TakaroTrackingResult[] } }>;
+    trackingControllerGetRadiusPlayers(body: {
+      gameserverId: string;
+      x: number;
+      y: number;
+      z: number;
+      radius: number;
+      startDate?: string;
+      endDate?: string;
+    }): Promise<{ data: { data: TakaroTrackingResult[] } }>;
+    trackingControllerGetPlayerInventoryHistory(body: {
+      playerId: string;
+      startDate: string;
+      endDate: string;
+    }): Promise<{ data: { data: unknown[] } }>;
+    trackingControllerGetPlayerMovementHistory(body: {
+      playerId?: string[];
+      startDate?: string;
+      endDate?: string;
+      limit?: number;
+    }): Promise<{ data: { data: TakaroTrackingResult[] } }>;
+    trackingControllerGetPlayersByItem(body: {
+      itemId: string;
+      startDate?: string;
+      endDate?: string;
+    }): Promise<{ data: { data: TakaroTrackingResult[] } }>;
+  };
+}
+
+let serviceClient: TakaroSDKClient | null = null;
+let operationMode: 'service' | 'cookie' | null = null;
 
 // Detect which auth mode to use based on environment variables
-function detectMode() {
+function detectMode(): 'service' | 'cookie' {
   const hasEnvVars = process.env.TAKARO_USERNAME && process.env.TAKARO_PASSWORD && process.env.TAKARO_DOMAIN;
   operationMode = hasEnvVars ? 'service' : 'cookie';
   return operationMode;
 }
 
 // Get current operation mode
-function getOperationMode() {
+export function getOperationMode(): 'service' | 'cookie' | null {
   return operationMode;
 }
 
 // Check if running in cookie mode (production - no env vars)
-function isCookieMode() {
+export function isCookieMode(): boolean {
   return operationMode === 'cookie';
 }
 
 // Create a client that forwards cookies from the user's browser
-async function createCookieClient(cookies, domainId = null) {
+export async function createCookieClient(
+  cookies: Record<string, string>,
+  domainId: string | null = null
+): Promise<TakaroSDKClient> {
   const ClientClass = await getClientClass();
   const apiUrl = process.env.TAKARO_API_URL || 'https://api.takaro.io';
 
@@ -52,10 +253,14 @@ async function createCookieClient(cookies, domainId = null) {
 }
 
 // Pagination helper - fetches all pages of paginated API results
-async function fetchAllPaginated(fetchFn, pageSize = 100, maxTotal = 10000) {
-  let allResults = [];
+async function fetchAllPaginated<T>(
+  fetchFn: (page: number, limit: number) => Promise<{ data: { data: T[]; meta?: { total?: number } } }>,
+  pageSize = 100,
+  maxTotal = 10000
+): Promise<T[]> {
+  let allResults: T[] = [];
   let page = 0;
-  let total = null;
+  let total: number | undefined;
 
   do {
     const response = await fetchFn(page, pageSize);
@@ -72,7 +277,7 @@ async function fetchAllPaginated(fetchFn, pageSize = 100, maxTotal = 10000) {
     }
   } while (total && allResults.length < total);
 
-  if (total > pageSize) {
+  if (total && total > pageSize) {
     console.log(`  📄 Paginated fetch: ${allResults.length}/${total} results (${page} pages)`);
   }
 
@@ -80,23 +285,23 @@ async function fetchAllPaginated(fetchFn, pageSize = 100, maxTotal = 10000) {
 }
 
 // Timing helper for API calls
-function logApiCall(method, start, resultCount = null) {
+function logApiCall(method: string, start: number, resultCount: number | null = null): void {
   const duration = Date.now() - start;
   const countStr = resultCount !== null ? ` (${resultCount} results)` : '';
   const emoji = duration > 2000 ? '🐢' : duration > 500 ? '⚠️' : '⚡';
   console.log(`  ${emoji} TAKARO API: ${method} - ${duration}ms${countStr}`);
 }
 
-async function getClientClass() {
+async function getClientClass(): Promise<typeof Client> {
   if (!Client) {
     const sdk = await import('@takaro/apiclient');
-    Client = sdk.Client;
+    Client = sdk.Client as typeof Client;
   }
   return Client;
 }
 
 // Initialize service client at startup (like Takaro agent)
-async function initServiceClient() {
+export async function initServiceClient(): Promise<TakaroSDKClient | null> {
   // Detect operation mode first
   detectMode();
   console.log(`Operation mode: ${operationMode}`);
@@ -150,31 +355,34 @@ async function initServiceClient() {
     console.log(`✓ Service client authenticated for domain: ${domainName} (${domainId})`);
     return serviceClient;
   } catch (error) {
-    console.error('Failed to initialize service client:', error.message);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Failed to initialize service client:', errorMessage);
     serviceClient = null;
     return null;
   }
 }
 
 // Get the service client (if initialized)
-function getServiceClient() {
+export function getServiceClient(): TakaroSDKClient | null {
   return serviceClient;
 }
 
 // Check if running in service mode
-function isServiceMode() {
+export function isServiceMode(): boolean {
   return serviceClient !== null;
 }
 
 // Wrapper class that uses either service client or custom client
-class TakaroClient {
-  constructor(domain) {
+export class TakaroClient {
+  domain: string | null;
+  client: TakaroSDKClient | null = null;
+
+  constructor(domain: string | null) {
     this.domain = domain;
-    this.client = null;
   }
 
   // Use service client if available
-  useServiceClient() {
+  useServiceClient(): boolean {
     if (serviceClient) {
       this.client = serviceClient;
       return true;
@@ -182,7 +390,7 @@ class TakaroClient {
     return false;
   }
 
-  async login(email, password) {
+  async login(email: string, password: string): Promise<{ success: boolean }> {
     try {
       const ClientClass = await getClientClass();
 
@@ -200,22 +408,32 @@ class TakaroClient {
       await this.client.login();
 
       // Select the domain and manually set the cookie
-      await this.client.user.userControllerSetSelectedDomain(this.domain);
-
-      // Manually set the domain cookie on the axios instance
-      this.client.setHeader('Cookie', `takaro-domain=${this.domain}`);
+      if (this.domain) {
+        await this.client.user.userControllerSetSelectedDomain(this.domain);
+        // Manually set the domain cookie on the axios instance
+        this.client.setHeader('Cookie', `takaro-domain=${this.domain}`);
+      }
 
       return { success: true };
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message || error.response?.data?.message || error.message || 'Login failed';
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
+        'Login failed';
       throw new Error(message);
     }
   }
 
-  async getGameServers(type = null) {
+  async getGameServers(type: string | null = null): Promise<TakaroGameServer[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     const cacheKey = cache.key('gameservers', this.domain || 'service', type || 'all');
-    const cached = await cache.get(cacheKey);
+    const cached = await cache.get<TakaroGameServer[]>(cacheKey);
     if (cached) return cached;
 
     const start = Date.now();
@@ -232,12 +450,19 @@ class TakaroClient {
     return data;
   }
 
-  async getPlayers(gameServerId) {
+  async getPlayers(gameServerId: string): Promise<NormalizedPlayer[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    // Check cache first
+    const cacheKey = cache.key('players', this.domain || 'service', gameServerId);
+    const cached = await cache.get<NormalizedPlayer[]>(cacheKey);
+    if (cached) return cached;
+
     const start = Date.now();
     // Get ALL players from POG (Player On Gameserver) endpoint with pagination
     const pogs = await fetchAllPaginated(
       (page, limit) =>
-        this.client.playerOnGameserver.playerOnGameServerControllerSearch({
+        this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
           filters: {
             gameServerId: [gameServerId],
             // No online filter = get ALL players (online and offline)
@@ -251,7 +476,7 @@ class TakaroClient {
 
     logApiCall('getPlayers (POG search)', start, pogs.length);
 
-    return pogs.map((pog) => ({
+    const players = pogs.map((pog) => ({
       id: pog.id,
       playerId: pog.playerId,
       name: pog.player?.name || 'Unknown',
@@ -263,15 +488,21 @@ class TakaroClient {
       currency: pog.currency,
       playtimeSeconds: pog.playtimeSeconds,
       lastSeen: pog.lastSeen,
-      online: pog.online,
+      online: pog.online ?? false,
     }));
+
+    // Cache for 30 seconds (matches auto-refresh interval)
+    await cache.set(cacheKey, players, TTL.PLAYERS_LIST);
+    return players;
   }
 
-  async getPlayerList(_gameServerId) {
+  async getPlayerList(_gameServerId: string): Promise<TakaroPlayer[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     // Get all players for this game server with pagination
     const players = await fetchAllPaginated(
       (page, limit) =>
-        this.client.player.playerControllerSearch({
+        this.client!.player.playerControllerSearch({
           filters: {},
           sortBy: 'name',
           sortDirection: 'asc',
@@ -284,16 +515,17 @@ class TakaroClient {
     return players;
   }
 
-  async getPlayersByIds(playerIds) {
+  async getPlayersByIds(playerIds: string[]): Promise<TakaroPlayer[]> {
+    if (!this.client) throw new Error('Client not initialized');
     if (!playerIds || playerIds.length === 0) return [];
 
     // Check cache for individual players first
-    const uncachedIds = [];
-    const cachedPlayers = [];
+    const uncachedIds: string[] = [];
+    const cachedPlayers: TakaroPlayer[] = [];
 
     for (const id of playerIds) {
       const cacheKey = cache.key('player', this.domain || 'service', id);
-      const cached = await cache.get(cacheKey);
+      const cached = await cache.get<TakaroPlayer>(cacheKey);
       if (cached) {
         cachedPlayers.push(cached);
       } else {
@@ -327,8 +559,30 @@ class TakaroClient {
     return [...cachedPlayers, ...fetchedData];
   }
 
-  async getPlayersInBox(gameServerId, minX, maxX, minY, maxY, minZ, maxZ, startDate, endDate) {
-    const body = {
+  async getPlayersInBox(
+    gameServerId: string,
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
+    minZ: number,
+    maxZ: number,
+    startDate?: string,
+    endDate?: string
+  ): Promise<TakaroTrackingResult[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    const body: {
+      gameserverId: string;
+      minX: number;
+      maxX: number;
+      minY: number;
+      maxY: number;
+      minZ: number;
+      maxZ: number;
+      startDate?: string;
+      endDate?: string;
+    } = {
       gameserverId: gameServerId,
       minX,
       maxX,
@@ -350,18 +604,40 @@ class TakaroClient {
       logApiCall('getPlayersInBox', start, data.length);
       return data;
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Box search failed';
-      console.error('Takaro box API error:', error.response?.data || error.message);
+      console.error('Takaro box API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 
-  async getPlayersInRadius(gameServerId, x, y, z, radius, startDate, endDate) {
-    const body = {
+  async getPlayersInRadius(
+    gameServerId: string,
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    startDate?: string,
+    endDate?: string
+  ): Promise<TakaroTrackingResult[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    const body: {
+      gameserverId: string;
+      x: number;
+      y: number;
+      z: number;
+      radius: number;
+      startDate?: string;
+      endDate?: string;
+    } = {
       gameserverId: gameServerId,
       x,
       y,
@@ -378,20 +654,26 @@ class TakaroClient {
       const response = await this.client.tracking.trackingControllerGetRadiusPlayers(body);
       return response.data.data || [];
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Radius search failed';
-      console.error('Takaro radius API error:', error.response?.data || error.message);
+      console.error('Takaro radius API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 
   // Get map info from Takaro (no direct 7D2D connection needed)
-  async getMapInfo(gameServerId) {
+  async getMapInfo(gameServerId: string): Promise<TakaroMapInfo> {
+    if (!this.client) throw new Error('Client not initialized');
+
     const cacheKey = cache.key('mapinfo', this.domain || 'service', gameServerId);
-    const cached = await cache.get(cacheKey);
+    const cached = await cache.get<TakaroMapInfo>(cacheKey);
     if (cached) return cached;
 
     try {
@@ -403,17 +685,23 @@ class TakaroClient {
       await cache.set(cacheKey, data, TTL.MAP_INFO);
       return data;
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Failed to get map info';
       throw new Error(message);
     }
   }
 
   // Get map tile from Takaro (no direct 7D2D connection needed)
-  async getMapTile(gameServerId, z, x, y) {
+  async getMapTile(gameServerId: string, z: number, x: number, y: number): Promise<ArrayBuffer | null> {
+    if (!this.client) throw new Error('Client not initialized');
+
     try {
       // Need to make a direct axios call with responseType: 'arraybuffer' for binary data
       const axios = this.client.axiosInstance;
@@ -423,7 +711,8 @@ class TakaroClient {
       return response.data;
     } catch (error) {
       // Return null for missing tiles (404)
-      if (error.response?.status === 404) {
+      const axiosError = error as { response?: { status?: number } };
+      if (axiosError.response?.status === 404) {
         return null;
       }
       throw error;
@@ -431,7 +720,9 @@ class TakaroClient {
   }
 
   // Get player inventory history from Takaro tracking API
-  async getPlayerInventoryHistory(playerId, startDate, endDate) {
+  async getPlayerInventoryHistory(playerId: string, startDate?: string, endDate?: string): Promise<unknown[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     try {
       // Default to last 24 hours if no dates provided
       const now = new Date();
@@ -446,20 +737,36 @@ class TakaroClient {
       const response = await this.client.tracking.trackingControllerGetPlayerInventoryHistory(body);
       return response.data.data || [];
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Failed to get inventory history';
-      console.error('Takaro inventory history API error:', error.response?.data || error.message);
+      console.error('Takaro inventory history API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 
   // Get player movement history from Takaro tracking API
-  async getPlayerMovementHistory(playerIds, startDate, endDate, limit = 10000) {
+  async getPlayerMovementHistory(
+    playerIds: string | string[] | undefined,
+    startDate?: string,
+    endDate?: string,
+    limit = 10000
+  ): Promise<TakaroTrackingResult[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     try {
-      const body = {
+      const body: {
+        limit: number;
+        playerId?: string[];
+        startDate?: string;
+        endDate?: string;
+      } = {
         limit,
       };
       // playerId should be an array
@@ -472,25 +779,35 @@ class TakaroClient {
       const response = await this.client.tracking.trackingControllerGetPlayerMovementHistory(body);
       return response.data.data || [];
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Failed to get movement history';
-      console.error('Takaro movement history API error:', error.response?.data || error.message);
+      console.error('Takaro movement history API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 
   // Search for items on a game server
-  async getItems(gameServerId, searchQuery = null) {
+  async getItems(gameServerId: string, searchQuery: string | null = null): Promise<TakaroItem[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     const cacheKey = cache.key('items', this.domain || 'service', gameServerId, searchQuery || 'all');
-    const cached = await cache.get(cacheKey);
+    const cached = await cache.get<TakaroItem[]>(cacheKey);
     if (cached) return cached;
 
     try {
       const start = Date.now();
-      const body = {
+      const body: {
+        filters: { gameserverId: string[] };
+        limit: number;
+        search?: { name: string[] };
+      } = {
         filters: {
           gameserverId: [gameServerId],
         },
@@ -512,20 +829,30 @@ class TakaroClient {
       await cache.set(cacheKey, data, 30 * 60);
       return data;
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Failed to get items';
-      console.error('Takaro getItems API error:', error.response?.data || error.message);
+      console.error('Takaro getItems API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 
   // Get players who have had a specific item in their inventory
-  async getPlayersByItem(itemId, startDate, endDate) {
+  async getPlayersByItem(itemId: string, startDate?: string, endDate?: string): Promise<TakaroTrackingResult[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     try {
-      const body = {
+      const body: {
+        itemId: string;
+        startDate?: string;
+        endDate?: string;
+      } = {
         itemId,
       };
 
@@ -543,18 +870,24 @@ class TakaroClient {
       logApiCall('getPlayersByItem', start, data.length);
       return data;
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Failed to get players by item';
-      console.error('Takaro getPlayersByItem API error:', error.response?.data || error.message);
+      console.error('Takaro getPlayersByItem API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 
   // Get all movement paths for players on a game server (uses box search for full coverage)
-  async getMovementPaths(gameServerId, startDate, endDate) {
+  async getMovementPaths(gameServerId: string, startDate?: string, endDate?: string): Promise<TakaroTrackingResult[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
     // Cache key includes date range
     const cacheKey = cache.key(
       'movementpaths',
@@ -563,12 +896,22 @@ class TakaroClient {
       startDate || 'nostart',
       endDate || 'noend'
     );
-    const cached = await cache.get(cacheKey);
+    const cached = await cache.get<TakaroTrackingResult[]>(cacheKey);
     if (cached) return cached;
 
     try {
       // Use a very large box to get all movement on the server
-      const body = {
+      const body: {
+        gameserverId: string;
+        minX: number;
+        maxX: number;
+        minY: number;
+        maxY: number;
+        minZ: number;
+        maxZ: number;
+        startDate?: string;
+        endDate?: string;
+      } = {
         gameserverId: gameServerId,
         minX: -100000,
         maxX: 100000,
@@ -589,28 +932,33 @@ class TakaroClient {
       await cache.set(cacheKey, data, TTL.MOVEMENT_PATHS);
       return data;
     } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
       const message =
-        error.response?.data?.meta?.error?.message ||
-        error.response?.data?.message ||
-        error.message ||
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
         'Failed to get movement paths';
-      console.error('Takaro movement paths API error:', error.response?.data || error.message);
+      console.error('Takaro movement paths API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }
 }
 
-function createClient(domain) {
+export function createClient(domain: string | null): TakaroClient {
   return new TakaroClient(domain);
 }
 
-module.exports = {
-  TakaroClient,
-  createClient,
-  initServiceClient,
-  getServiceClient,
-  isServiceMode,
-  isCookieMode,
-  getOperationMode,
-  createCookieClient,
+// Export types
+export type {
+  TakaroGameServer,
+  TakaroPlayer,
+  TakaroMapInfo,
+  TakaroItem,
+  TakaroTrackingResult,
+  MovementPath,
+  MovementPoint,
+  NormalizedPlayer,
 };

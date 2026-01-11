@@ -1,15 +1,30 @@
 // Shared color utilities for player markers and paths
 
-const ColorUtils = {
+interface ColorUtilsType {
+  customColors: Record<string, string>;
+  init(): void;
+  saveColors(): void;
+  setCustomColor(playerId: string, color: string): void;
+  clearCustomColor(playerId: string): void;
+  hasCustomColor(playerId: string): boolean;
+  getCustomColor(playerId: string): string | null;
+  notifyColorChange(playerId: string): void;
+  getPlayerColor(playerId: string): string;
+  getAutoColor(playerId: string): string;
+  getPlayerHue(playerId: string): number;
+  offlineColor: string;
+}
+
+export const ColorUtils: ColorUtilsType = {
   // Store custom player colors (playerId -> hex color)
   customColors: {},
 
   // Load custom colors from localStorage
-  init() {
+  init(): void {
     const saved = localStorage.getItem('playerCustomColors');
     if (saved) {
       try {
-        this.customColors = JSON.parse(saved);
+        this.customColors = JSON.parse(saved) as Record<string, string>;
       } catch (_e) {
         this.customColors = {};
       }
@@ -17,12 +32,12 @@ const ColorUtils = {
   },
 
   // Save custom colors to localStorage
-  saveColors() {
+  saveColors(): void {
     localStorage.setItem('playerCustomColors', JSON.stringify(this.customColors));
   },
 
   // Set a custom color for a player
-  setCustomColor(playerId, color) {
+  setCustomColor(playerId: string, color: string): void {
     this.customColors[String(playerId)] = color;
     this.saveColors();
     // Trigger refresh of markers and paths
@@ -30,36 +45,36 @@ const ColorUtils = {
   },
 
   // Clear custom color for a player (revert to auto)
-  clearCustomColor(playerId) {
+  clearCustomColor(playerId: string): void {
     delete this.customColors[String(playerId)];
     this.saveColors();
     this.notifyColorChange(playerId);
   },
 
   // Check if player has custom color
-  hasCustomColor(playerId) {
+  hasCustomColor(playerId: string): boolean {
     return String(playerId) in this.customColors;
   },
 
   // Get custom color or null
-  getCustomColor(playerId) {
+  getCustomColor(playerId: string): string | null {
     return this.customColors[String(playerId)] || null;
   },
 
   // Notify that a color changed - refresh paths and markers
-  notifyColorChange(_playerId) {
+  notifyColorChange(_playerId: string): void {
     // Refresh player markers
     if (window.Players && window.App?.gameServerId) {
-      Players.refreshVisibility();
+      window.Players.refreshVisibility();
     }
     // Refresh paths if visible
-    if (window.History && History.isVisible) {
-      History.drawPaths();
+    if (window.History && window.History.isVisible) {
+      window.History.drawPaths();
     }
   },
 
   // Generate a consistent HSL color for a player based on their ID
-  getPlayerColor(playerId) {
+  getPlayerColor(playerId: string): string {
     // Check for custom color first
     const custom = this.getCustomColor(playerId);
     if (custom) return custom;
@@ -76,7 +91,7 @@ const ColorUtils = {
   },
 
   // Get the auto-generated color (ignoring custom)
-  getAutoColor(playerId) {
+  getAutoColor(playerId: string): string {
     let hash = 0;
     const str = String(playerId);
     for (let i = 0; i < str.length; i++) {
@@ -88,7 +103,7 @@ const ColorUtils = {
   },
 
   // Get hue value for a player (useful for SVG styling)
-  getPlayerHue(playerId) {
+  getPlayerHue(playerId: string): number {
     let hash = 0;
     const str = String(playerId);
     for (let i = 0; i < str.length; i++) {

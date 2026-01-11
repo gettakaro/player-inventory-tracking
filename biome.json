@@ -45,8 +45,10 @@
   "files": {
     "includes": [
       "**/*.js",
+      "**/*.ts",
       "**/*.json",
       "!**/node_modules",
+      "!**/dist",
       "!**/data",
       "!**/cache",
       "!**/.claude",

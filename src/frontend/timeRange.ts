@@ -1,6 +1,36 @@
 // Time Range Selector Module
 
-const TimeRange = {
+import type { DateRange, TimePreset } from './types.js';
+
+interface TimeRangeState {
+  preset: string;
+  customStart: string | null;
+  customEnd: string | null;
+}
+
+type TimeRangeCallback = (start: Date, end: Date, preset: string) => void;
+
+interface TimeRangeType {
+  presets: TimePreset[];
+  currentPreset: string;
+  customStart: Date | null;
+  customEnd: Date | null;
+  onChangeCallback: TimeRangeCallback | null;
+  initialized: boolean;
+  init(onChangeCallback: TimeRangeCallback): void;
+  setupEventListeners(): void;
+  updateCustomInputsVisibility(): void;
+  updateInputValues(): void;
+  formatForInput(date: Date): string;
+  getDateRange(): DateRange;
+  validateCustomRange(): boolean;
+  triggerChange(): void;
+  saveState(): void;
+  restoreState(): void;
+  getCurrentLabel(): string;
+}
+
+export const TimeRange: TimeRangeType = {
   // Preset definitions (value in milliseconds, null for custom)
   // Organized by: Seconds, Minutes, Hours, Days, Custom
   presets: [
@@ -31,7 +61,7 @@ const TimeRange = {
   onChangeCallback: null,
   initialized: false,
 
-  init(onChangeCallback) {
+  init(onChangeCallback: TimeRangeCallback): void {
     if (this.initialized) return;
     this.initialized = true;
 
@@ -42,17 +72,17 @@ const TimeRange = {
     this.updateInputValues();
   },
 
-  setupEventListeners() {
-    const selector = document.getElementById('time-range-preset');
-    const startInput = document.getElementById('start-date');
-    const endInput = document.getElementById('end-date');
-    const applyBtn = document.getElementById('apply-range-btn');
+  setupEventListeners(): void {
+    const selector = document.getElementById('time-range-preset') as HTMLSelectElement | null;
+    const startInput = document.getElementById('start-date') as HTMLInputElement | null;
+    const endInput = document.getElementById('end-date') as HTMLInputElement | null;
+    const applyBtn = document.getElementById('apply-range-btn') as HTMLButtonElement | null;
 
     if (!selector) return;
 
     // Preset change handler
     selector.addEventListener('change', (e) => {
-      this.currentPreset = e.target.value;
+      this.currentPreset = (e.target as HTMLSelectElement).value;
       this.updateCustomInputsVisibility();
       this.updateInputValues();
       this.saveState();
@@ -62,6 +92,8 @@ const TimeRange = {
         this.triggerChange();
       }
     });
+
+    if (!applyBtn || !startInput || !endInput) return;
 
     // Apply button handler
     applyBtn.addEventListener('click', () => {
@@ -92,7 +124,7 @@ const TimeRange = {
     });
   },
 
-  updateCustomInputsVisibility() {
+  updateCustomInputsVisibility(): void {
     const customInputs = document.getElementById('custom-date-inputs');
     const isCustom = this.currentPreset === 'custom';
 
@@ -101,9 +133,9 @@ const TimeRange = {
     }
   },
 
-  updateInputValues() {
-    const startInput = document.getElementById('start-date');
-    const endInput = document.getElementById('end-date');
+  updateInputValues(): void {
+    const startInput = document.getElementById('start-date') as HTMLInputElement | null;
+    const endInput = document.getElementById('end-date') as HTMLInputElement | null;
 
     if (!startInput || !endInput) return;
 
@@ -112,12 +144,12 @@ const TimeRange = {
     endInput.value = this.formatForInput(end);
   },
 
-  formatForInput(date) {
+  formatForInput(date: Date): string {
     // Format for datetime-local input (YYYY-MM-DDTHH:MM)
     return date.toISOString().slice(0, 16);
   },
 
-  getDateRange() {
+  getDateRange(): DateRange {
     if (this.currentPreset === 'custom') {
       return {
         start: this.customStart || new Date(Date.now() - 24 * 60 * 60 * 1000),
@@ -127,15 +159,15 @@ const TimeRange = {
 
     const preset = this.presets.find((p) => p.id === this.currentPreset);
     const now = new Date();
-    const start = new Date(now.getTime() - (preset ? preset.value : 24 * 60 * 60 * 1000));
+    const start = new Date(now.getTime() - (preset ? preset.value || 0 : 24 * 60 * 60 * 1000));
 
     return { start, end: now };
   },
 
-  validateCustomRange() {
-    const startInput = document.getElementById('start-date');
-    const endInput = document.getElementById('end-date');
-    const applyBtn = document.getElementById('apply-range-btn');
+  validateCustomRange(): boolean {
+    const startInput = document.getElementById('start-date') as HTMLInputElement | null;
+    const endInput = document.getElementById('end-date') as HTMLInputElement | null;
+    const applyBtn = document.getElementById('apply-range-btn') as HTMLButtonElement | null;
 
     if (!startInput || !endInput || !applyBtn) return false;
 
@@ -158,7 +190,7 @@ const TimeRange = {
     return true;
   },
 
-  triggerChange() {
+  triggerChange(): void {
     if (this.onChangeCallback) {
       const { start, end } = this.getDateRange();
       this.onChangeCallback(start, end, this.currentPreset);
@@ -166,8 +198,8 @@ const TimeRange = {
   },
 
   // Persistence
-  saveState() {
-    const state = {
+  saveState(): void {
+    const state: TimeRangeState = {
       preset: this.currentPreset,
       customStart: this.customStart ? this.customStart.toISOString() : null,
       customEnd: this.customEnd ? this.customEnd.toISOString() : null,
@@ -175,17 +207,17 @@ const TimeRange = {
     localStorage.setItem('timeRangeState', JSON.stringify(state));
   },
 
-  restoreState() {
+  restoreState(): void {
     try {
       const saved = localStorage.getItem('timeRangeState');
       if (saved) {
-        const state = JSON.parse(saved);
+        const state: TimeRangeState = JSON.parse(saved);
         this.currentPreset = state.preset || '24h';
         this.customStart = state.customStart ? new Date(state.customStart) : null;
         this.customEnd = state.customEnd ? new Date(state.customEnd) : null;
 
         // Update dropdown
-        const selector = document.getElementById('time-range-preset');
+        const selector = document.getElementById('time-range-preset') as HTMLSelectElement | null;
         if (selector) {
           selector.value = this.currentPreset;
         }
@@ -195,7 +227,7 @@ const TimeRange = {
     }
   },
 
-  getCurrentLabel() {
+  getCurrentLabel(): string {
     const preset = this.presets.find((p) => p.id === this.currentPreset);
     return preset ? preset.label : 'Last 24 hours';
   },

@@ -372,6 +372,9 @@ export function isServiceMode(): boolean {
   return serviceClient !== null;
 }
 
+// In-flight request deduplication to prevent concurrent fetches for the same data
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
 // Wrapper class that uses either service client or custom client
 export class TakaroClient {
   domain: string | null;
@@ -458,42 +461,62 @@ export class TakaroClient {
     const cached = await cache.get<NormalizedPlayer[]>(cacheKey);
     if (cached) return cached;
 
-    const start = Date.now();
-    // Get ALL players from POG (Player On Gameserver) endpoint with pagination
-    const pogs = await fetchAllPaginated(
-      (page, limit) =>
-        this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
-          filters: {
-            gameServerId: [gameServerId],
-            // No online filter = get ALL players (online and offline)
-          },
-          extend: ['player'],
-          page,
-          limit,
-        }),
-      100 // Page size
-    );
+    // Check if there's already an in-flight request for this data
+    const inFlightKey = `players:${this.domain || 'service'}:${gameServerId}`;
+    const inFlight = inFlightRequests.get(inFlightKey);
+    if (inFlight) {
+      console.log(`  ⏳ Waiting for in-flight request: ${inFlightKey}`);
+      return inFlight as Promise<NormalizedPlayer[]>;
+    }
 
-    logApiCall('getPlayers (POG search)', start, pogs.length);
+    // Create the fetch promise and store it
+    const fetchPromise = (async () => {
+      const start = Date.now();
+      // Get ALL players from POG (Player On Gameserver) endpoint with pagination
+      const pogs = await fetchAllPaginated(
+        (page, limit) =>
+          this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+            filters: {
+              gameServerId: [gameServerId],
+              // No online filter = get ALL players (online and offline)
+            },
+            extend: ['player'],
+            page,
+            limit,
+          }),
+        100 // Page size
+      );
 
-    const players = pogs.map((pog) => ({
-      id: pog.id,
-      playerId: pog.playerId,
-      name: pog.player?.name || 'Unknown',
-      steamId: pog.player?.steamId,
-      x: pog.positionX,
-      y: pog.positionY,
-      z: pog.positionZ,
-      ping: pog.ping,
-      currency: pog.currency,
-      playtimeSeconds: pog.playtimeSeconds,
-      lastSeen: pog.lastSeen,
-      online: pog.online ?? false,
-    }));
+      logApiCall('getPlayers (POG search)', start, pogs.length);
 
-    // Cache for 30 seconds (matches auto-refresh interval)
-    await cache.set(cacheKey, players, TTL.PLAYERS_LIST);
-    return players;
+      const players = pogs.map((pog) => ({
+        id: pog.id,
+        playerId: pog.playerId,
+        name: pog.player?.name || 'Unknown',
+        steamId: pog.player?.steamId,
+        x: pog.positionX,
+        y: pog.positionY,
+        z: pog.positionZ,
+        ping: pog.ping,
+        currency: pog.currency,
+        playtimeSeconds: pog.playtimeSeconds,
+        lastSeen: pog.lastSeen,
+        online: pog.online ?? false,
+      }));
+
+      // Cache for 60 seconds
+      await cache.set(cacheKey, players, TTL.PLAYERS_LIST);
+      return players;
+    })();
+
+    // Store the promise and clean up when done
+    inFlightRequests.set(inFlightKey, fetchPromise);
+    try {
+      const result = await fetchPromise;
+      return result;
+    } finally {
+      inFlightRequests.delete(inFlightKey);
+    }
   }
 
   async getPlayerList(_gameServerId: string): Promise<TakaroPlayer[]> {

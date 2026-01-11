@@ -1,31 +1,31 @@
-const { createClient } = require('redis');
+import { createClient, type RedisClientType } from 'redis';
 
 // Cache TTLs in seconds
-const TTL = {
+export const TTL = {
   GAME_SERVERS: 15 * 60, // 15 minutes
   MAP_INFO: 60 * 60, // 1 hour
   PLAYER_NAMES: 5 * 60, // 5 minutes
-  PLAYERS_LIST: 30, // 30 seconds (for auto-refresh)
+  PLAYERS_LIST: 60, // 60 seconds (longer to account for slow fetches)
   MOVEMENT_PATHS: 5 * 60, // 5 minutes
   DEATH_EVENTS: 10 * 60, // 10 minutes
   AREA_SEARCH: 2 * 60, // 2 minutes
-};
+} as const;
+
+type CacheValue = unknown;
 
 class Cache {
-  constructor() {
-    this.redis = null;
-    this.connected = false;
-    this.memoryCache = new Map();
-    this.memoryCacheTTL = new Map();
-  }
+  private redis: RedisClientType | null = null;
+  private connected = false;
+  private memoryCache: Map<string, CacheValue> = new Map();
+  private memoryCacheTTL: Map<string, number> = new Map();
 
-  async connect() {
+  async connect(): Promise<boolean> {
     try {
       this.redis = createClient({
         url: process.env.REDIS_URL || 'redis://localhost:6379',
       });
 
-      this.redis.on('error', (_err) => {
+      this.redis.on('error', () => {
         if (this.connected) {
           console.warn('Redis connection lost, falling back to memory cache');
           this.connected = false;
@@ -42,35 +42,36 @@ class Cache {
       console.log('✓ Cache: Redis connected');
       return true;
     } catch (error) {
-      console.warn('Redis not available, using in-memory cache:', error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('Redis not available, using in-memory cache:', errorMessage);
       this.connected = false;
       return false;
     }
   }
 
   // Generate cache key
-  key(prefix, ...parts) {
+  key(prefix: string, ...parts: string[]): string {
     return `takaro:${prefix}:${parts.join(':')}`;
   }
 
   // Get from cache
-  async get(key) {
+  async get<T = CacheValue>(key: string): Promise<T | null> {
     const start = Date.now();
     try {
       if (this.connected && this.redis) {
         const value = await this.redis.get(key);
         if (value) {
           console.log(`  ⚡ CACHE HIT: ${key} (${Date.now() - start}ms)`);
-          return JSON.parse(value);
+          return JSON.parse(value) as T;
         }
       } else {
         // Memory cache fallback
         const entry = this.memoryCache.get(key);
-        if (entry) {
+        if (entry !== undefined) {
           const ttl = this.memoryCacheTTL.get(key);
           if (ttl && Date.now() < ttl) {
             console.log(`  ⚡ MEM CACHE HIT: ${key} (${Date.now() - start}ms)`);
-            return entry;
+            return entry as T;
           } else {
             // Expired
             this.memoryCache.delete(key);
@@ -79,13 +80,14 @@ class Cache {
         }
       }
     } catch (error) {
-      console.warn(`Cache get error for ${key}:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Cache get error for ${key}:`, errorMessage);
     }
     return null;
   }
 
   // Set in cache
-  async set(key, value, ttlSeconds) {
+  async set(key: string, value: CacheValue, ttlSeconds: number): Promise<void> {
     try {
       if (this.connected && this.redis) {
         await this.redis.setEx(key, ttlSeconds, JSON.stringify(value));
@@ -95,12 +97,13 @@ class Cache {
         this.memoryCacheTTL.set(key, Date.now() + ttlSeconds * 1000);
       }
     } catch (error) {
-      console.warn(`Cache set error for ${key}:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Cache set error for ${key}:`, errorMessage);
     }
   }
 
   // Delete from cache
-  async del(key) {
+  async del(key: string): Promise<void> {
     try {
       if (this.connected && this.redis) {
         await this.redis.del(key);
@@ -109,12 +112,13 @@ class Cache {
         this.memoryCacheTTL.delete(key);
       }
     } catch (error) {
-      console.warn(`Cache del error for ${key}:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Cache del error for ${key}:`, errorMessage);
     }
   }
 
   // Delete by pattern (for invalidation)
-  async delPattern(pattern) {
+  async delPattern(pattern: string): Promise<void> {
     try {
       if (this.connected && this.redis) {
         const keys = await this.redis.keys(pattern);
@@ -132,17 +136,22 @@ class Cache {
         }
       }
     } catch (error) {
-      console.warn(`Cache delPattern error for ${pattern}:`, error.message);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Cache delPattern error for ${pattern}:`, errorMessage);
     }
   }
 
   // Wrap an async function with caching
-  wrap(keyFn, ttlSeconds, fn) {
-    return async (...args) => {
+  wrap<TArgs extends unknown[], TResult>(
+    keyFn: ((...args: TArgs) => string) | string,
+    ttlSeconds: number,
+    fn: (...args: TArgs) => Promise<TResult>
+  ): (...args: TArgs) => Promise<TResult> {
+    return async (...args: TArgs): Promise<TResult> => {
       const key = typeof keyFn === 'function' ? keyFn(...args) : keyFn;
 
       // Try cache first
-      const cached = await this.get(key);
+      const cached = await this.get<TResult>(key);
       if (cached !== null) {
         return cached;
       }
@@ -160,7 +169,7 @@ class Cache {
   }
 
   // Get cache stats
-  async stats() {
+  async stats(): Promise<{ type: string; info?: string; keys?: number }> {
     if (this.connected && this.redis) {
       const info = await this.redis.info('stats');
       return { type: 'redis', info };
@@ -173,9 +182,4 @@ class Cache {
 }
 
 // Singleton instance
-const cache = new Cache();
-
-module.exports = {
-  cache,
-  TTL,
-};
+export const cache = new Cache();

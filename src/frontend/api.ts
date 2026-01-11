@@ -1,42 +1,69 @@
 // API client for backend communication
 
-const API = {
-  sessionId: null,
-  domain: null,
+import type {
+  AreaSearchResult,
+  AuthStatus,
+  GameServer,
+  InventoryItem,
+  Item,
+  ItemSearchResult,
+  MapInfo,
+  MovementPath,
+  Player,
+} from './types.js';
 
-  setSession(id) {
+interface RequestOptions extends RequestInit {
+  headers?: Record<string, string>;
+}
+
+interface ErrorResponse {
+  error?: string;
+  needsLogin?: boolean;
+  loginUrl?: string;
+}
+
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+}
+
+export const API = {
+  sessionId: null as string | null,
+  domain: null as string | null,
+
+  setSession(id: string): void {
     this.sessionId = id;
     localStorage.setItem('sessionId', id);
   },
 
-  getSession() {
+  getSession(): string | null {
     if (!this.sessionId) {
       this.sessionId = localStorage.getItem('sessionId');
     }
     return this.sessionId;
   },
 
-  setDomain(domain) {
+  setDomain(domain: string): void {
     this.domain = domain;
     localStorage.setItem('takaroDomain', domain);
   },
 
-  getDomain() {
+  getDomain(): string | null {
     if (!this.domain) {
       this.domain = localStorage.getItem('takaroDomain');
     }
     return this.domain;
   },
 
-  clearSession() {
+  clearSession(): void {
     this.sessionId = null;
     this.domain = null;
     localStorage.removeItem('sessionId');
     localStorage.removeItem('takaroDomain');
   },
 
-  async request(url, options = {}) {
-    const headers = {
+  async request<T>(url: string, options: RequestOptions = {}): Promise<T> {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
@@ -52,7 +79,7 @@ const API = {
     });
 
     if (response.status === 401) {
-      const data = await response.json().catch(() => ({}));
+      const data = (await response.json().catch(() => ({}))) as ErrorResponse;
 
       // Handle cookie mode session expiration
       if (data.needsLogin && data.loginUrl) {
@@ -65,17 +92,17 @@ const API = {
       throw new Error(data.error || 'Session expired');
     }
 
-    const data = await response.json().catch(() => ({}));
+    const data = (await response.json().catch(() => ({}))) as T | ErrorResponse;
 
     if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      throw new Error((data as ErrorResponse).error || 'Request failed');
     }
 
-    return data;
+    return data as T;
   },
 
   // Check auth status (for both service mode and cookie mode)
-  async getAuthStatus() {
+  async getAuthStatus(): Promise<AuthStatus> {
     const response = await fetch('/api/auth/status', {
       credentials: 'include', // Include cookies for cookie mode auth
     });
@@ -83,78 +110,92 @@ const API = {
   },
 
   // Get available domains (for cookie mode domain selector)
-  async getDomains() {
-    const data = await this.request('/api/domains');
+  async getDomains(): Promise<ApiResponse<Array<{ id: string; name: string }>>> {
+    const data = await this.request<ApiResponse<Array<{ id: string; name: string }>>>('/api/domains');
     return data;
   },
 
   // Select a domain (cookie mode only)
-  async selectDomain(domainId) {
-    return await this.request('/api/domains/select', {
+  async selectDomain(domainId: string): Promise<ApiResponse<unknown>> {
+    return await this.request<ApiResponse<unknown>>('/api/domains/select', {
       method: 'POST',
       body: JSON.stringify({ domainId }),
     });
   },
 
   // Game Servers
-  async getGameServers() {
-    const data = await this.request('/api/gameservers');
+  async getGameServers(): Promise<GameServer[]> {
+    const data = await this.request<ApiResponse<GameServer[]>>('/api/gameservers');
     return data.data || [];
   },
 
-  async getMapInfo(gameServerId) {
-    const data = await this.request(`/api/map-info/${gameServerId}`);
-    return data.data;
+  async getMapInfo(gameServerId: string): Promise<MapInfo> {
+    const data = await this.request<ApiResponse<MapInfo>>(`/api/map-info/${gameServerId}`);
+    return data.data as MapInfo;
   },
 
   // Map Tile URL (for Leaflet)
-  getMapTileUrl(gameServerId) {
+  getMapTileUrl(gameServerId: string): string {
     return `/api/map/${gameServerId}/{z}/{x}/{y}.png`;
   },
 
   // Players - now returns ALL players (online and offline)
-  async getPlayers(gameServerId) {
-    const data = await this.request(`/api/players?gameServerId=${gameServerId}`);
+  async getPlayers(gameServerId: string): Promise<Player[]> {
+    const data = await this.request<ApiResponse<Player[]>>(`/api/players?gameServerId=${gameServerId}`);
     return data.data || [];
   },
 
   // Player Inventory History (from Takaro tracking API)
-  async getPlayerInventory(playerId, startDate, endDate) {
+  async getPlayerInventory(playerId: string, startDate?: string, endDate?: string): Promise<InventoryItem[]> {
     let url = `/api/inventory/${playerId}`;
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
     if (params.toString()) url += `?${params.toString()}`;
 
-    const data = await this.request(url);
+    const data = await this.request<ApiResponse<InventoryItem[]>>(url);
     return data.data || [];
   },
 
   // Player Movement History (from Takaro tracking API)
-  async getPlayerHistory(gameServerId, playerId, startDate, endDate) {
+  async getPlayerHistory(
+    gameServerId: string,
+    playerId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<MovementPath> {
     let url = `/api/player-history/${gameServerId}/${playerId}`;
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
     if (params.toString()) url += `?${params.toString()}`;
 
-    const data = await this.request(url);
-    return data.data || [];
+    const data = await this.request<ApiResponse<MovementPath>>(url);
+    return data.data as MovementPath;
   },
 
   // Movement Paths (for history/playback)
-  async getMovementPaths(gameServerId, startDate, endDate) {
+  async getMovementPaths(
+    gameServerId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<Record<string, MovementPath>> {
     let url = `/api/movement-paths?gameServerId=${gameServerId}`;
     if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
     if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
 
-    const data = await this.request(url);
+    const data = await this.request<ApiResponse<Record<string, MovementPath>>>(url);
     return data.data || {};
   },
 
   // Area Search
-  async getPlayersInBox(gameServerId, bounds, startDate, endDate) {
-    const data = await this.request('/api/players/area/box', {
+  async getPlayersInBox(
+    gameServerId: string,
+    bounds: { minX: number; maxX: number; minZ: number; maxZ: number },
+    startDate?: string,
+    endDate?: string
+  ): Promise<AreaSearchResult[]> {
+    const data = await this.request<ApiResponse<AreaSearchResult[]>>('/api/players/area/box', {
       method: 'POST',
       body: JSON.stringify({
         gameServerId,
@@ -171,8 +212,14 @@ const API = {
     return data.data || [];
   },
 
-  async getPlayersInRadius(gameServerId, center, radius, startDate, endDate) {
-    const data = await this.request('/api/players/area/radius', {
+  async getPlayersInRadius(
+    gameServerId: string,
+    center: { x: number; z: number },
+    radius: number,
+    startDate?: string,
+    endDate?: string
+  ): Promise<AreaSearchResult[]> {
+    const data = await this.request<ApiResponse<AreaSearchResult[]>>('/api/players/area/radius', {
       method: 'POST',
       body: JSON.stringify({
         gameServerId,
@@ -188,16 +235,16 @@ const API = {
   },
 
   // Get all items for a game server (for dropdown)
-  async getItems(gameServerId, search = null) {
+  async getItems(gameServerId: string, search: string | null = null): Promise<Item[]> {
     let url = `/api/items?gameServerId=${gameServerId}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
-    const data = await this.request(url);
+    const data = await this.request<ApiResponse<Item[]>>(url);
     return data.data || [];
   },
 
   // Item Search - find players who have/had a specific item
-  async getPlayersByItem(itemId, startDate, endDate) {
-    const data = await this.request('/api/players/item', {
+  async getPlayersByItem(itemId: string, startDate?: string, endDate?: string): Promise<ItemSearchResult[]> {
+    const data = await this.request<ApiResponse<ItemSearchResult[]>>('/api/players/item', {
       method: 'POST',
       body: JSON.stringify({
         itemId,

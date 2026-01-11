@@ -1,6 +1,85 @@
 // Player Info Panel - Shows detailed player information with inventory timeline
 
-const PlayerInfo = {
+import type { DateRange, InventoryItem, Item, ItemSearchResult, Player } from './types.js';
+
+interface InventoryDiff {
+  added: DiffItem[];
+  removed: DiffItem[];
+  changed: ChangedItem[];
+}
+
+interface DiffItem {
+  name: string;
+  code: string;
+  quantity: number;
+  quality?: string | number | null;
+}
+
+interface ChangedItem extends DiffItem {
+  quantityChange: number;
+}
+
+interface InventoryEntry {
+  quantity: number;
+  quality?: string | number | null;
+  createdAt: string;
+}
+
+interface PlayerGroupedResult {
+  playerId: string;
+  playerName: string;
+  entries: InventoryEntry[];
+}
+
+interface CurrentItemSearch {
+  itemId: string;
+  itemName: string;
+}
+
+interface PlayerInfoModule {
+  selectedPlayerId: string | null;
+  selectedPlayer: Player | null;
+  inventoryHistory: InventoryItem[];
+  isLoading: boolean;
+  isExpanded: boolean;
+  itemSearchResults: ItemSearchResult[];
+  currentItemSearch: CurrentItemSearch | null;
+  items: Item[];
+  gameServerId: string | null;
+  ICON_BASE_URL: string;
+
+  init(): void;
+  setupEventListeners(): void;
+  toggleExpand(): void;
+  switchTopTab(tabId: string): void;
+  switchSubTab(tabId: string): void;
+  showPlayer(playerId: string): Promise<void>;
+  hidePanel(): void;
+  renderPlayerStats(player: Player): void;
+  attachColorPickerHandlers(playerId: string): void;
+  colorToHex(color: string): string;
+  formatPlaytime(seconds?: number): string | null;
+  loadAndRenderInventory(): Promise<void>;
+  renderCurrentInventory(inventory: InventoryItem[]): void;
+  renderInventoryDiff(inventory: InventoryItem[]): void;
+  calculateDiff(prevSnapshot: InventoryItem[], currSnapshot: InventoryItem[]): InventoryDiff;
+  escapeHtml(text: string): string;
+  getItemIconUrl(itemName: string): string | null;
+  createItemIcon(itemName: string): string;
+  onTimeRangeChange(): Promise<void>;
+  renderMovementTab(): void;
+  loadItems(gameServerId: string): Promise<void>;
+  updateItemSuggestions(query: string): Promise<void>;
+  clearItemFilter(): void;
+  searchByItemId(itemId: string, itemName: string, startDate?: string, endDate?: string): Promise<void>;
+  searchByItemName(itemName: string, startDate?: string, endDate?: string): Promise<void>;
+  showItemSearchResults(itemName: string, results: ItemSearchResult[]): void;
+  renderItemSearchResults(itemName: string, results: ItemSearchResult[]): void;
+  formatRelativeTime(timestamp: string): string;
+  attachInventoryClickHandlers(): void;
+}
+
+const PlayerInfo: PlayerInfoModule = {
   selectedPlayerId: null,
   selectedPlayer: null,
   inventoryHistory: [],
@@ -15,11 +94,11 @@ const PlayerInfo = {
   ICON_BASE_URL:
     'https://raw.githubusercontent.com/CatalysmsServerManager/7dtd-icons/master/sdtdIcons/1.0%20-%20Vanilla/',
 
-  init() {
+  init(): void {
     this.setupEventListeners();
   },
 
-  setupEventListeners() {
+  setupEventListeners(): void {
     // Close button
     const closeBtn = document.getElementById('close-bottom-panel');
     if (closeBtn) {
@@ -35,27 +114,34 @@ const PlayerInfo = {
     // Top-level tab switching (Player Info / Item Search)
     document.querySelectorAll('.top-tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        const tabId = e.target.dataset.topTab;
-        this.switchTopTab(tabId);
+        const target = e.target as HTMLElement;
+        const tabId = target.dataset.topTab;
+        if (tabId) {
+          this.switchTopTab(tabId);
+        }
       });
     });
 
     // Sub-tab switching within Player Info (Inventory / Movement)
     document.querySelectorAll('.player-info-tabs .tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        const tabId = e.target.dataset.tab;
-        this.switchSubTab(tabId);
+        const target = e.target as HTMLElement;
+        const tabId = target.dataset.tab;
+        if (tabId) {
+          this.switchSubTab(tabId);
+        }
       });
     });
 
     // Item search input in Item Search tab
-    const itemSearchInput = document.getElementById('item-search');
+    const itemSearchInput = document.getElementById('item-search') as HTMLInputElement | null;
     if (itemSearchInput) {
       // Debounced search for autocomplete
-      let searchTimeout;
+      let searchTimeout: ReturnType<typeof setTimeout>;
       itemSearchInput.addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
-        const query = e.target.value.trim();
+        const target = e.target as HTMLInputElement;
+        const query = target.value.trim();
 
         searchTimeout = setTimeout(async () => {
           if (query.length >= 2) {
@@ -66,7 +152,8 @@ const PlayerInfo = {
 
       // Handle selection from datalist
       itemSearchInput.addEventListener('change', async (e) => {
-        const selectedName = e.target.value.trim();
+        const target = e.target as HTMLInputElement;
+        const selectedName = target.value.trim();
         if (!selectedName) return;
 
         // Find the item in our cached items
@@ -79,7 +166,8 @@ const PlayerInfo = {
       // Handle Enter key
       itemSearchInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
-          const selectedName = e.target.value.trim();
+          const target = e.target as HTMLInputElement;
+          const selectedName = target.value.trim();
           if (!selectedName) return;
 
           const item = this.items.find((i) => i.name === selectedName);
@@ -102,7 +190,7 @@ const PlayerInfo = {
     // TimeRange calls its callback when changed, we'll hook into that via app.js
   },
 
-  toggleExpand() {
+  toggleExpand(): void {
     const panel = document.getElementById('bottom-panel');
     const expandBtn = document.getElementById('expand-bottom-panel');
     if (!panel) return;
@@ -117,10 +205,11 @@ const PlayerInfo = {
   },
 
   // Switch between top-level tabs (Player Info / Item Search)
-  switchTopTab(tabId) {
+  switchTopTab(tabId: string): void {
     // Update top-level tab buttons
     document.querySelectorAll('.top-tab-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.topTab === tabId);
+      const btnEl = btn as HTMLElement;
+      btn.classList.toggle('active', btnEl.dataset.topTab === tabId);
     });
 
     // Update top-level tab panes
@@ -136,10 +225,11 @@ const PlayerInfo = {
   },
 
   // Switch between sub-tabs within Player Info (Inventory / Movement)
-  switchSubTab(tabId) {
+  switchSubTab(tabId: string): void {
     // Update sub-tab buttons
     document.querySelectorAll('.player-info-tabs .tab-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.tab === tabId);
+      const btnEl = btn as HTMLElement;
+      btn.classList.toggle('active', btnEl.dataset.tab === tabId);
     });
 
     // Update sub-tab panes
@@ -153,12 +243,12 @@ const PlayerInfo = {
     }
   },
 
-  async showPlayer(playerId) {
+  async showPlayer(playerId: string): Promise<void> {
     if (this.isLoading) return;
 
     // Find player in the players list
-    const player = Players.allPlayers.find(
-      (p) => String(p.playerId) === String(playerId) || String(p.id) === String(playerId)
+    const player = window.Players.allPlayers.find(
+      (p: Player) => String(p.playerId) === String(playerId) || String(p.id) === String(playerId)
     );
 
     if (!player) {
@@ -191,7 +281,7 @@ const PlayerInfo = {
     this.isLoading = false;
   },
 
-  hidePanel() {
+  hidePanel(): void {
     const panel = document.getElementById('bottom-panel');
     if (panel) {
       panel.style.display = 'none';
@@ -209,7 +299,7 @@ const PlayerInfo = {
     }
   },
 
-  renderPlayerStats(player) {
+  renderPlayerStats(player: Player): void {
     const container = document.getElementById('player-info-stats');
     if (!container) return;
 
@@ -219,12 +309,12 @@ const PlayerInfo = {
     const currency =
       player.currency !== null && player.currency !== undefined ? player.currency.toLocaleString() : null;
 
-    const profileUrl = player.playerId ? `${Auth.dashboardUrl}/player/${player.playerId}/info` : null;
+    const profileUrl = player.playerId ? `${window.Auth.dashboardUrl}/player/${player.playerId}/info` : null;
 
     // Get current color for player
     const playerId = player.playerId;
-    const currentColor = playerId ? ColorUtils.getPlayerColor(playerId) : ColorUtils.offlineColor;
-    const hasCustomColor = playerId ? ColorUtils.hasCustomColor(playerId) : false;
+    const currentColor = playerId ? window.ColorUtils.getPlayerColor(playerId) : window.ColorUtils.offlineColor;
+    const hasCustomColor = playerId ? window.ColorUtils.hasCustomColor(playerId) : false;
 
     container.innerHTML = `
       <div class="stat-item">
@@ -256,7 +346,7 @@ const PlayerInfo = {
       }
       <div class="stat-item">
         <span class="stat-label">Position</span>
-        <span class="stat-value">X: ${Math.round(player.x)}, Z: ${Math.round(player.z)}${player.y !== null ? `, Y: ${Math.round(player.y)}` : ''}</span>
+        <span class="stat-value">X: ${Math.round(player.x ?? 0)}, Z: ${Math.round(player.z ?? 0)}${player.y !== null ? `, Y: ${Math.round(player.y)}` : ''}</span>
       </div>
       ${
         !isOnline
@@ -290,17 +380,20 @@ const PlayerInfo = {
     `;
 
     // Attach color picker event handlers
-    this.attachColorPickerHandlers(playerId);
+    if (playerId) {
+      this.attachColorPickerHandlers(playerId);
+    }
   },
 
   // Attach handlers for color picker
-  attachColorPickerHandlers(playerId) {
-    const colorPicker = document.getElementById('player-color-picker');
-    const resetBtn = document.getElementById('reset-color-btn');
+  attachColorPickerHandlers(playerId: string): void {
+    const colorPicker = document.getElementById('player-color-picker') as HTMLInputElement | null;
+    const resetBtn = document.getElementById('reset-color-btn') as HTMLButtonElement | null;
 
     if (colorPicker && playerId) {
       colorPicker.addEventListener('change', (e) => {
-        ColorUtils.setCustomColor(playerId, e.target.value);
+        const target = e.target as HTMLInputElement;
+        window.ColorUtils.setCustomColor(playerId, target.value);
         // Enable reset button
         if (resetBtn) resetBtn.disabled = false;
       });
@@ -308,10 +401,10 @@ const PlayerInfo = {
 
     if (resetBtn && playerId) {
       resetBtn.addEventListener('click', () => {
-        ColorUtils.clearCustomColor(playerId);
+        window.ColorUtils.clearCustomColor(playerId);
         // Update color picker to show auto color
         if (colorPicker) {
-          colorPicker.value = this.colorToHex(ColorUtils.getAutoColor(playerId));
+          colorPicker.value = this.colorToHex(window.ColorUtils.getAutoColor(playerId));
         }
         resetBtn.disabled = true;
       });
@@ -319,7 +412,7 @@ const PlayerInfo = {
   },
 
   // Convert HSL or any color to hex for color picker input
-  colorToHex(color) {
+  colorToHex(color: string): string {
     // If already hex, return it
     if (color.startsWith('#')) return color;
 
@@ -342,7 +435,7 @@ const PlayerInfo = {
     return '#808080'; // fallback
   },
 
-  formatPlaytime(seconds) {
+  formatPlaytime(seconds?: number): string | null {
     if (!seconds) return null;
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -352,7 +445,7 @@ const PlayerInfo = {
     return `${minutes}m`;
   },
 
-  async loadAndRenderInventory() {
+  async loadAndRenderInventory(): Promise<void> {
     const currentContainer = document.getElementById('current-inventory-table');
     const diffContainer = document.getElementById('inventory-diff-list');
 
@@ -364,10 +457,14 @@ const PlayerInfo = {
 
     try {
       // Get time range from TimeRange module
-      const { start, end } = TimeRange.getDateRange();
+      const { start, end }: DateRange = window.TimeRange.getDateRange();
 
       // Fetch inventory history
-      const inventory = await API.getPlayerInventory(this.selectedPlayerId, start.toISOString(), end.toISOString());
+      const inventory = await window.API.getPlayerInventory(
+        this.selectedPlayerId,
+        start.toISOString(),
+        end.toISOString()
+      );
 
       this.inventoryHistory = inventory;
 
@@ -383,7 +480,7 @@ const PlayerInfo = {
     }
   },
 
-  renderCurrentInventory(inventory) {
+  renderCurrentInventory(inventory: InventoryItem[]): void {
     const container = document.getElementById('current-inventory-table');
     if (!container) return;
 
@@ -393,9 +490,9 @@ const PlayerInfo = {
     }
 
     // Group by timestamp to get the most recent snapshot
-    const byTimestamp = {};
+    const byTimestamp: Record<string, InventoryItem[]> = {};
     for (const item of inventory) {
-      const ts = item.createdAt;
+      const ts = item.createdAt || '';
       if (!byTimestamp[ts]) byTimestamp[ts] = [];
       byTimestamp[ts].push(item);
     }
@@ -442,7 +539,7 @@ const PlayerInfo = {
     this.attachInventoryClickHandlers();
   },
 
-  renderInventoryDiff(inventory) {
+  renderInventoryDiff(inventory: InventoryItem[]): void {
     const container = document.getElementById('inventory-diff-list');
     if (!container) return;
 
@@ -452,9 +549,9 @@ const PlayerInfo = {
     }
 
     // Group by timestamp
-    const byTimestamp = {};
+    const byTimestamp: Record<string, InventoryItem[]> = {};
     for (const item of inventory) {
-      const ts = item.createdAt;
+      const ts = item.createdAt || '';
       if (!byTimestamp[ts]) byTimestamp[ts] = [];
       byTimestamp[ts].push(item);
     }
@@ -467,7 +564,7 @@ const PlayerInfo = {
     }
 
     // Calculate diffs between consecutive snapshots
-    const diffs = [];
+    const diffs: Array<{ timestamp: string } & InventoryDiff> = [];
     for (let i = 1; i < timestamps.length; i++) {
       const prevSnapshot = byTimestamp[timestamps[i - 1]];
       const currSnapshot = byTimestamp[timestamps[i]];
@@ -526,13 +623,13 @@ const PlayerInfo = {
     container.innerHTML = `<div class="diff-list">${diffHtml}</div>`;
   },
 
-  calculateDiff(prevSnapshot, currSnapshot) {
-    const added = [];
-    const removed = [];
-    const changed = [];
+  calculateDiff(prevSnapshot: InventoryItem[], currSnapshot: InventoryItem[]): InventoryDiff {
+    const added: DiffItem[] = [];
+    const removed: DiffItem[] = [];
+    const changed: ChangedItem[] = [];
 
     // Create maps for comparison (using itemName or itemCode as key)
-    const prevMap = new Map();
+    const prevMap = new Map<string, DiffItem>();
     for (const item of prevSnapshot) {
       const name = item.itemName || item.itemCode || 'unknown';
       const code = item.itemCode || item.itemName || 'unknown';
@@ -545,7 +642,7 @@ const PlayerInfo = {
       });
     }
 
-    const currMap = new Map();
+    const currMap = new Map<string, DiffItem>();
     for (const item of currSnapshot) {
       const name = item.itemName || item.itemCode || 'unknown';
       const code = item.itemCode || item.itemName || 'unknown';
@@ -581,20 +678,20 @@ const PlayerInfo = {
     return { added, removed, changed };
   },
 
-  escapeHtml(text) {
+  escapeHtml(text: string): string {
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
   },
 
-  getItemIconUrl(itemName) {
+  getItemIconUrl(itemName: string): string | null {
     if (!itemName) return null;
     // The icon filename matches the item code/name from the game
     return `${this.ICON_BASE_URL}${encodeURIComponent(itemName)}.png`;
   },
 
-  createItemIcon(itemName) {
+  createItemIcon(itemName: string): string {
     const iconUrl = this.getItemIconUrl(itemName);
     if (!iconUrl) return '';
     // Use onerror to hide broken images gracefully
@@ -602,14 +699,14 @@ const PlayerInfo = {
   },
 
   // Called when time range changes to refresh inventory
-  async onTimeRangeChange() {
+  async onTimeRangeChange(): Promise<void> {
     if (this.selectedPlayerId && !this.isLoading) {
       await this.loadAndRenderInventory();
     }
   },
 
   // Render the movement tab with position timeline
-  renderMovementTab() {
+  renderMovementTab(): void {
     const statsContainer = document.getElementById('movement-stats');
     const timelineContainer = document.getElementById('movement-timeline');
 
@@ -620,7 +717,8 @@ const PlayerInfo = {
     const paths = window.History?.paths || {};
 
     // Find matching player path (try different ID formats)
-    let playerPath = paths[playerId];
+    let playerPath: { name?: string; points?: Array<{ x: number; z: number; timestamp: string }> } | undefined =
+      paths[playerId || ''];
     if (!playerPath) {
       // Try to find by matching player ID variations
       for (const [id, data] of Object.entries(paths)) {
@@ -651,7 +749,7 @@ const PlayerInfo = {
     // Calculate time span
     const firstTime = new Date(points[0].timestamp);
     const lastTime = new Date(points[points.length - 1].timestamp);
-    const durationMs = lastTime - firstTime;
+    const durationMs = lastTime.getTime() - firstTime.getTime();
     const durationSec = durationMs / 1000;
 
     // Average speed (blocks per second)
@@ -675,10 +773,10 @@ const PlayerInfo = {
 
     // Render timeline (most recent first, limit to last 50 points)
     const recentPoints = points.slice(-50).reverse();
-    let prevPoint = null;
+    let prevPoint: { x: number; z: number } | null = null;
 
     const entriesHtml = recentPoints
-      .map((point, _idx) => {
+      .map((point) => {
         const time = new Date(point.timestamp);
         const timeStr = time.toLocaleTimeString('en-US', {
           hour: '2-digit',
@@ -712,10 +810,10 @@ const PlayerInfo = {
   },
 
   // Load items for autocomplete
-  async loadItems(gameServerId) {
+  async loadItems(gameServerId: string): Promise<void> {
     this.gameServerId = gameServerId;
     try {
-      this.items = await API.getItems(gameServerId);
+      this.items = await window.API.getItems(gameServerId);
       console.log(`[PlayerInfo] Loaded ${this.items.length} items for autocomplete`);
     } catch (error) {
       console.error('[PlayerInfo] Failed to load items:', error);
@@ -724,12 +822,12 @@ const PlayerInfo = {
   },
 
   // Update item suggestions in datalist based on search query
-  async updateItemSuggestions(query) {
+  async updateItemSuggestions(query: string): Promise<void> {
     if (!this.gameServerId) return;
 
     try {
       // Fetch items matching the query
-      const items = await API.getItems(this.gameServerId, query);
+      const items = await window.API.getItems(this.gameServerId, query);
       this.items = items;
 
       // Update datalist
@@ -746,12 +844,12 @@ const PlayerInfo = {
   },
 
   // Clear item filter
-  clearItemFilter() {
+  clearItemFilter(): void {
     this.currentItemSearch = null;
     this.itemSearchResults = [];
 
     // Clear input
-    const input = document.getElementById('item-search');
+    const input = document.getElementById('item-search') as HTMLInputElement | null;
     if (input) input.value = '';
 
     // Hide filter indicator
@@ -771,14 +869,14 @@ const PlayerInfo = {
 
     // Clear player list filter
     if (window.PlayerList) {
-      PlayerList.clearItemFilter();
+      window.PlayerList.clearItemFilter();
     }
   },
 
   // Item search functionality - search for players who have had a specific item
 
   // Search by item ID directly (called when clicking an item in inventory)
-  async searchByItemId(itemId, itemName, startDate, endDate) {
+  async searchByItemId(itemId: string, itemName: string, startDate?: string, endDate?: string): Promise<void> {
     console.log(`[PlayerInfo] Searching for players with item ID: ${itemId} (${itemName})`);
 
     this.currentItemSearch = { itemId, itemName };
@@ -812,15 +910,15 @@ const PlayerInfo = {
     try {
       // Get time range if not provided
       if (!startDate || !endDate) {
-        const range = window.TimeRange
-          ? TimeRange.getDateRange()
+        const range: DateRange = window.TimeRange
+          ? window.TimeRange.getDateRange()
           : { start: new Date(Date.now() - 24 * 60 * 60 * 1000), end: new Date() };
         startDate = startDate || range.start.toISOString();
         endDate = endDate || range.end.toISOString();
       }
 
       // Call the API
-      const results = await API.getPlayersByItem(itemId, startDate, endDate);
+      const results = await window.API.getPlayersByItem(itemId, startDate, endDate);
       this.itemSearchResults = results;
 
       // Extract player IDs and update filter
@@ -828,7 +926,7 @@ const PlayerInfo = {
 
       // Update player list filter
       if (window.PlayerList) {
-        PlayerList.setItemFilter(playerIds, itemName, results);
+        window.PlayerList.setItemFilter(playerIds, itemName);
       }
 
       // Render results in the Item Search tab
@@ -836,13 +934,14 @@ const PlayerInfo = {
     } catch (error) {
       console.error('[PlayerInfo] Item search error:', error);
       if (resultsContainer) {
-        resultsContainer.innerHTML = `<div class="error-text">Search failed: ${this.escapeHtml(error.message)}</div>`;
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        resultsContainer.innerHTML = `<div class="error-text">Search failed: ${this.escapeHtml(errorMsg)}</div>`;
       }
     }
   },
 
   // Search by item name (called from search input)
-  async searchByItemName(itemName, startDate, endDate) {
+  async searchByItemName(itemName: string, startDate?: string, endDate?: string): Promise<void> {
     console.log(`[PlayerInfo] Searching by item name: "${itemName}"`);
 
     // We need to find an itemId that matches this name
@@ -857,7 +956,7 @@ const PlayerInfo = {
           (item.itemCode && item.itemCode.toLowerCase().includes(itemName.toLowerCase()))
       );
       if (inventoryMatch && inventoryMatch.itemId) {
-        matchingItem = { id: inventoryMatch.itemId, name: inventoryMatch.itemName || inventoryMatch.itemCode };
+        matchingItem = { id: inventoryMatch.itemId, name: inventoryMatch.itemName || inventoryMatch.itemCode || '' };
         console.log(`[PlayerInfo] Found item ID in inventory cache: ${matchingItem.id}`);
       }
     }
@@ -891,11 +990,11 @@ const PlayerInfo = {
   },
 
   // Render item search results in the Item Search tab
-  showItemSearchResults(itemName, results) {
+  showItemSearchResults(itemName: string, results: ItemSearchResult[]): void {
     this.renderItemSearchResults(itemName, results);
   },
 
-  renderItemSearchResults(itemName, results) {
+  renderItemSearchResults(itemName: string, results: ItemSearchResult[]): void {
     const resultsContainer = document.getElementById('item-search-results-list');
     const queryEl = document.getElementById('item-search-query');
 
@@ -912,7 +1011,7 @@ const PlayerInfo = {
     }
 
     // Group results by player
-    const byPlayer = {};
+    const byPlayer: Record<string, PlayerGroupedResult> = {};
     for (const result of results) {
       const playerId = result.playerId;
       if (!byPlayer[playerId]) {
@@ -925,20 +1024,20 @@ const PlayerInfo = {
       byPlayer[playerId].entries.push({
         quantity: result.quantity || 1,
         quality: result.quality,
-        createdAt: result.createdAt,
+        createdAt: result.createdAt || '',
       });
     }
 
     // Sort entries within each player by time (most recent first)
     for (const playerId in byPlayer) {
-      byPlayer[playerId].entries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      byPlayer[playerId].entries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
 
     // Sort players by most recent entry
     const sortedPlayers = Object.values(byPlayer).sort((a, b) => {
       const aTime = new Date(a.entries[0].createdAt);
       const bTime = new Date(b.entries[0].createdAt);
-      return bTime - aTime;
+      return bTime.getTime() - aTime.getTime();
     });
 
     // Render player cards
@@ -973,23 +1072,26 @@ const PlayerInfo = {
     // Attach click handlers to player cards - click opens player in Player Info tab
     resultsContainer.querySelectorAll('.item-player-card').forEach((card) => {
       card.addEventListener('click', async () => {
-        const playerId = card.dataset.playerId;
+        const cardEl = card as HTMLElement;
+        const playerId = cardEl.dataset.playerId;
+
+        if (!playerId) return;
 
         // Show the player's info in the Player Info tab
         await this.showPlayer(playerId);
 
         // Also focus on the player in the map if available
-        if (window.Players && Players.focusPlayer) {
-          Players.focusPlayer(playerId);
+        if (window.Players && window.Players.focusPlayer) {
+          window.Players.focusPlayer(playerId);
         }
       });
     });
   },
 
-  formatRelativeTime(timestamp) {
+  formatRelativeTime(timestamp: string): string {
     const date = new Date(timestamp);
     const now = new Date();
-    const diffMs = now - date;
+    const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
@@ -1002,27 +1104,28 @@ const PlayerInfo = {
   },
 
   // Make inventory items clickable for item search
-  attachInventoryClickHandlers() {
+  attachInventoryClickHandlers(): void {
     const inventoryTable = document.querySelector('.inventory-table tbody');
     if (!inventoryTable) return;
 
     inventoryTable.querySelectorAll('tr').forEach((row) => {
       row.classList.add('clickable-item');
       row.addEventListener('click', () => {
-        const itemId = row.dataset.itemId;
-        const itemName = row.dataset.itemName;
-        const itemCode = row.dataset.itemCode;
+        const rowEl = row as HTMLElement;
+        const itemId = rowEl.dataset.itemId;
+        const itemName = rowEl.dataset.itemName;
+        const itemCode = rowEl.dataset.itemCode;
 
         if (itemId) {
-          this.searchByItemId(itemId, itemName || itemCode);
+          this.searchByItemId(itemId, itemName || itemCode || '');
         } else {
           // Fallback: try to find itemId in inventory history
           const item = this.inventoryHistory.find((i) => i.itemName === itemName || i.itemCode === itemCode);
           if (item && item.itemId) {
-            this.searchByItemId(item.itemId, itemName || itemCode);
+            this.searchByItemId(item.itemId, itemName || itemCode || '');
           } else {
             // Last resort: search by name
-            this.searchByItemName(itemName || itemCode);
+            this.searchByItemName(itemName || itemCode || '');
           }
         }
       });
@@ -1030,4 +1133,5 @@ const PlayerInfo = {
   },
 };
 
+export { PlayerInfo };
 window.PlayerInfo = PlayerInfo;

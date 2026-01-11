@@ -1,18 +1,36 @@
 // Leaflet map setup with 7D2D coordinate system
 
+import type { MapInfo } from './types.js';
+
+declare const L: typeof import('leaflet');
+
+// Extend L.CRS for custom scaling
+interface CustomCRS extends L.CRS {
+  scale: (zoom: number) => number;
+  zoom: (scale: number) => number;
+}
+
 // Custom CRS with proper scaling for 7D2D tile system
 // At zoom 4: scale = 128 (1 tile = 1 lat/lng unit)
 // At zoom 0: scale = 8 (1 tile = 16 lat/lng units)
-const SDTD_CRS = L.extend({}, L.CRS.Simple, {
-  scale: (zoom) => {
+const SDTD_CRS: CustomCRS = L.extend({}, L.CRS.Simple, {
+  scale: (zoom: number): number => {
     return 2 ** (zoom + 3); // zoom 0 = 8, zoom 4 = 128
   },
-  zoom: (scale) => Math.log(scale) / Math.LN2 - 3,
-});
+  zoom: (scale: number): number => Math.log(scale) / Math.LN2 - 3,
+}) as CustomCRS;
 
 // Custom GridLayer for 7D2D that handles centered coordinate system
-L.GridLayer.SDTD = L.GridLayer.extend({
-  createTile: function (coords, done) {
+interface SDTDGridLayerOptions extends L.GridLayerOptions {
+  baseUrl: string;
+}
+
+const SDTDGridLayer = L.GridLayer.extend({
+  createTile: function (
+    this: L.GridLayer & { options: SDTDGridLayerOptions },
+    coords: L.Coords,
+    done: L.DoneCallback
+  ): HTMLImageElement {
     const tile = document.createElement('img');
 
     // Convert Leaflet tile coords to Takaro/7D2D tile coords
@@ -21,51 +39,52 @@ L.GridLayer.SDTD = L.GridLayer.extend({
     const x = coords.x;
     const y = -coords.y - 1;
 
-    const url = this.options.baseUrl.replace('{z}', coords.z).replace('{x}', x).replace('{y}', y);
+    const url = this.options.baseUrl
+      .replace('{z}', String(coords.z))
+      .replace('{x}', String(x))
+      .replace('{y}', String(y));
 
-    console.log(`Tile: z=${coords.z} leaflet(${coords.x},${coords.y}) -> 7d2d(${x},${y})`);
-
-    tile.onload = () => done(null, tile);
+    tile.onload = () => done(undefined, tile);
     tile.onerror = () => {
       tile.src = '';
-      done(null, tile);
+      done(undefined, tile);
     };
-    tile.crossOrigin = 'anonymous';
+    tile.crossOrigin = 'use-credentials';
     tile.src = url;
 
     return tile;
   },
 });
 
-L.gridLayer.sdtd = (options) => new L.GridLayer.SDTD(options);
+const createSDTDGridLayer = (options: SDTDGridLayerOptions): L.GridLayer => new SDTDGridLayer(options);
 
-const GameMap = {
-  map: null,
-  tileLayer: null,
-  gameServerId: null,
+export const GameMap = {
+  map: null as L.Map | null,
+  tileLayer: null as L.GridLayer | null,
+  gameServerId: null as string | null,
   worldSize: 6144,
   maxZoom: 4,
   tileSize: 128,
 
   // 7D2D coordinate conversion
-  gameToLatLng(x, z) {
+  gameToLatLng(x: number, z: number): L.LatLng {
     // Convert game coords to lat/lng (scaled to tile system)
     return L.latLng(z / this.tileSize, x / this.tileSize);
   },
 
-  latLngToGame(latlng) {
+  latLngToGame(latlng: L.LatLng): { x: number; z: number } {
     return {
       x: Math.round(latlng.lng * this.tileSize),
       z: Math.round(latlng.lat * this.tileSize),
     };
   },
 
-  async init(gameServerId) {
+  async init(gameServerId: string): Promise<L.Map> {
     this.gameServerId = gameServerId;
 
     // Get map info from 7D2D server
     try {
-      const mapInfo = await API.getMapInfo(gameServerId);
+      const mapInfo: MapInfo = await window.API.getMapInfo(gameServerId);
       this.worldSize = mapInfo.worldSize || 6144;
       this.maxZoom = mapInfo.maxZoom || 4;
     } catch (error) {
@@ -88,9 +107,9 @@ const GameMap = {
     // Set initial view to center (0,0 in tile coords)
     this.map.setView([0, 0], 0);
 
-    // Add custom tile layer for 7D2D
-    const tileUrl = `${API.getMapTileUrl(gameServerId)}?session=${API.getSession()}`;
-    this.tileLayer = L.gridLayer.sdtd({
+    // Add custom tile layer for 7D2D (cookies handle auth, no session param needed)
+    const tileUrl = window.API.getMapTileUrl(gameServerId);
+    this.tileLayer = createSDTDGridLayer({
       baseUrl: tileUrl,
       tileSize: this.tileSize,
       minZoom: 0,
@@ -99,7 +118,7 @@ const GameMap = {
       bounds: bounds,
       noWrap: true,
       keepBuffer: 2,
-    });
+    } as SDTDGridLayerOptions);
 
     this.tileLayer.addTo(this.map);
 
@@ -107,9 +126,12 @@ const GameMap = {
     this.addGridLayer();
 
     // Add coordinate display on mouse move
-    this.map.on('mousemove', (e) => {
+    this.map.on('mousemove', (e: L.LeafletMouseEvent) => {
       const coords = this.latLngToGame(e.latlng);
-      document.getElementById('cursor-coords').textContent = `X: ${coords.x}, Z: ${coords.z}`;
+      const cursorEl = document.getElementById('cursor-coords');
+      if (cursorEl) {
+        cursorEl.textContent = `X: ${coords.x}, Z: ${coords.z}`;
+      }
     });
 
     // Save map state on view change
@@ -123,12 +145,14 @@ const GameMap = {
     return this.map;
   },
 
-  addGridLayer() {
+  addGridLayer(): void {
+    if (!this.map) return;
+
     // Add grid lines every 500 blocks
     const gridSize = 500;
     const halfWorld = this.worldSize / 2;
 
-    const gridLines = [];
+    const gridLines: L.LatLngExpression[][] = [];
 
     // Vertical lines
     for (let x = -halfWorld; x <= halfWorld; x += gridSize) {
@@ -146,22 +170,24 @@ const GameMap = {
       interactive: false,
     });
 
+    const map = this.map;
+
     // Only show grid at lower zoom levels
-    this.map.on('zoomend', () => {
-      if (this.map.getZoom() < 3) {
-        gridLayer.addTo(this.map);
+    map.on('zoomend', () => {
+      if (map.getZoom() < 3) {
+        gridLayer.addTo(map);
       } else {
         gridLayer.remove();
       }
     });
 
     // Initially add if zoomed out
-    if (this.map.getZoom() < 3) {
-      gridLayer.addTo(this.map);
+    if (map.getZoom() < 3) {
+      gridLayer.addTo(map);
     }
   },
 
-  saveState() {
+  saveState(): void {
     if (!this.map || !this.gameServerId) return;
 
     const state = {
@@ -172,13 +198,13 @@ const GameMap = {
     localStorage.setItem(`mapState_${this.gameServerId}`, JSON.stringify(state));
   },
 
-  restoreState() {
+  restoreState(): void {
     if (!this.map || !this.gameServerId) return;
 
     try {
       const saved = localStorage.getItem(`mapState_${this.gameServerId}`);
       if (saved) {
-        const state = JSON.parse(saved);
+        const state = JSON.parse(saved) as { center: L.LatLngLiteral; zoom: number };
         this.map.setView(state.center, state.zoom);
       }
     } catch (error) {
@@ -186,7 +212,7 @@ const GameMap = {
     }
   },
 
-  destroy() {
+  destroy(): void {
     if (this.map) {
       this.map.remove();
       this.map = null;
@@ -194,7 +220,7 @@ const GameMap = {
     }
   },
 
-  refresh() {
+  refresh(): void {
     if (this.tileLayer) {
       this.tileLayer.redraw();
     }

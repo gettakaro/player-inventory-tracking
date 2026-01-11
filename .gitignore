@@ -12,6 +12,10 @@ data/
 # Cache
 cache/
 
+# Build output
+dist/
+public/dist/
+
 # IDE
 .vscode/
 .idea/

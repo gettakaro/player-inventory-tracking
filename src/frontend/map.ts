@@ -49,7 +49,7 @@ const SDTDGridLayer = L.GridLayer.extend({
       tile.src = '';
       done(undefined, tile);
     };
-    tile.crossOrigin = 'anonymous';
+    tile.crossOrigin = 'use-credentials';
     tile.src = url;
 
     return tile;
@@ -107,8 +107,8 @@ export const GameMap = {
     // Set initial view to center (0,0 in tile coords)
     this.map.setView([0, 0], 0);
 
-    // Add custom tile layer for 7D2D
-    const tileUrl = `${window.API.getMapTileUrl(gameServerId)}?session=${window.API.getSession()}`;
+    // Add custom tile layer for 7D2D (cookies handle auth, no session param needed)
+    const tileUrl = window.API.getMapTileUrl(gameServerId);
     this.tileLayer = createSDTDGridLayer({
       baseUrl: tileUrl,
       tileSize: this.tileSize,

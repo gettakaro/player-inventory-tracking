@@ -18,6 +18,12 @@ export const App: AppModule = {
   isMapInitialized: false,
 
   async init(): Promise<void> {
+    // Display app version
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) {
+      versionEl.textContent = `v${__APP_VERSION__}`;
+    }
+
     // Check if already logged in (service mode)
     const isLoggedIn = await window.Auth.init();
 

@@ -1,5 +1,7 @@
 import * as esbuild from 'esbuild';
+import { readFileSync } from 'fs';
 
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const isDev = process.argv.includes('--watch');
 
 const config = {
@@ -12,6 +14,9 @@ const config = {
   sourcemap: isDev,
   minify: !isDev,
   external: ['leaflet'], // Leaflet is loaded via CDN
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
 };
 
 if (isDev) {

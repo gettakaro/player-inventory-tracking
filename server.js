@@ -2,10 +2,19 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('node:path');
 const fs = require('node:fs').promises;
 
-const { createClient: createTakaroClient, initServiceClient, isServiceMode } = require('./lib/takaro');
+const {
+  TakaroClient,
+  createClient: createTakaroClient,
+  initServiceClient,
+  isServiceMode,
+  isCookieMode,
+  getOperationMode,
+  createCookieClient,
+} = require('./lib/takaro');
 
 const { cache } = require('./lib/cache');
 
@@ -13,8 +22,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: true, // Allow all origins (needed for cookie mode)
+    credentials: true, // Allow cookies to be sent
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Debug timing middleware - logs all API requests with timing
@@ -40,32 +55,181 @@ let serviceSession = null;
 // Service session ID (used when running in service mode)
 const SERVICE_SESSION_ID = 'service-session';
 
-// Auth middleware - service mode only
-function requireAuth(req, res, next) {
-  if (!isServiceMode() || !serviceSession) {
-    return res.status(401).json({
-      error: 'Service not configured. Set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables.',
+// Auth middleware - handles both service mode and cookie mode
+async function requireAuth(req, res, next) {
+  try {
+    if (isServiceMode()) {
+      // Service mode: use pre-authenticated client
+      if (!serviceSession) {
+        return res.status(503).json({
+          error: 'Service not initialized. Please wait or check server logs.',
+        });
+      }
+      req.session = serviceSession;
+      req.sessionId = SERVICE_SESSION_ID;
+      return next();
+    }
+
+    if (isCookieMode()) {
+      // Cookie mode: forward user's cookies to Takaro API
+      const hasTakaroCookies = hasTakaroSession(req.cookies);
+
+      if (!hasTakaroCookies) {
+        return res.status(401).json({
+          error: 'Not authenticated. Please log in to Takaro first.',
+          needsLogin: true,
+          loginUrl: process.env.TAKARO_API_URL || 'https://api.takaro.io',
+        });
+      }
+
+      // Get domain from cookie or header
+      const domainId = req.cookies['takaro-domain'] || req.headers['x-takaro-domain'] || null;
+
+      // Create a per-request client with forwarded cookies
+      const client = await createCookieClient(req.cookies, domainId);
+
+      // Wrap in TakaroClient-like interface
+      const takaroClient = new TakaroClient(domainId);
+      takaroClient.client = client;
+
+      req.session = {
+        domain: domainId,
+        takaroClient,
+        createdAt: new Date(),
+      };
+      req.sessionId = 'cookie-session';
+      return next();
+    }
+
+    // Neither mode active - should not happen
+    return res.status(500).json({
+      error: 'Server misconfiguration - no auth mode detected',
+    });
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    return res.status(500).json({
+      error: `Authentication error: ${error.message}`,
     });
   }
+}
 
-  req.session = serviceSession;
-  req.sessionId = SERVICE_SESSION_ID;
-  next();
+// Helper to check if request has Takaro session cookies
+function hasTakaroSession(cookies) {
+  if (!cookies || Object.keys(cookies).length === 0) return false;
+
+  // Ory session cookies typically start with 'ory_' or contain 'session'
+  // Also check for takaro-domain cookie
+  const sessionCookies = Object.keys(cookies).filter(
+    (key) => key.startsWith('ory_') || key.includes('session') || key === 'takaro-domain'
+  );
+
+  return sessionCookies.length > 0;
 }
 
 // ============== AUTH ROUTES ==============
 
-// Check auth status - tells frontend if service mode is active
-app.get('/api/auth/status', (_req, res) => {
-  const serviceMode = isServiceMode();
-  const domain = process.env.TAKARO_DOMAIN || null;
+// Check auth status - tells frontend the current auth mode and status
+app.get('/api/auth/status', async (req, res) => {
+  const mode = getOperationMode();
 
-  res.json({
-    serviceMode,
-    authenticated: serviceMode,
-    domain,
-    sessionId: serviceMode ? SERVICE_SESSION_ID : null,
+  if (mode === 'service') {
+    // Service mode - report if service client is ready
+    const serviceMode = isServiceMode();
+    res.json({
+      mode: 'service',
+      serviceMode: true,
+      authenticated: serviceMode,
+      domain: process.env.TAKARO_DOMAIN || null,
+      sessionId: serviceMode ? SERVICE_SESSION_ID : null,
+    });
+  } else {
+    // Cookie mode - check if user has valid cookies
+    const hasCookies = hasTakaroSession(req.cookies);
+    const domainId = req.cookies['takaro-domain'] || null;
+
+    // If we have cookies, try to validate them by making a test API call
+    let isValid = false;
+    let domains = [];
+
+    if (hasCookies) {
+      try {
+        const client = await createCookieClient(req.cookies, domainId);
+        const meResponse = await client.user.userControllerMe();
+        isValid = true;
+        domains = meResponse.data.data?.domains || [];
+      } catch (error) {
+        console.warn('Cookie validation failed:', error.message);
+        isValid = false;
+      }
+    }
+
+    res.json({
+      mode: 'cookie',
+      serviceMode: false,
+      authenticated: isValid,
+      domain: domainId,
+      availableDomains: domains,
+      needsLogin: !isValid,
+      loginUrl: process.env.TAKARO_API_URL || 'https://api.takaro.io',
+    });
+  }
+});
+
+// Get available domains for current user
+app.get('/api/domains', async (req, res) => {
+  if (isServiceMode()) {
+    // In service mode, only one domain is available
+    const domain = process.env.TAKARO_DOMAIN;
+    return res.json({
+      data: [{ id: domain, name: domain }],
+      currentDomain: domain,
+    });
+  }
+
+  // Cookie mode - fetch user's domains
+  try {
+    const client = await createCookieClient(req.cookies);
+    const meResponse = await client.user.userControllerMe();
+    const domains = meResponse.data.data?.domains || [];
+    const currentDomain = req.cookies['takaro-domain'] || null;
+
+    res.json({
+      data: domains,
+      currentDomain,
+    });
+  } catch (_error) {
+    res.status(401).json({ error: 'Not authenticated or session expired' });
+  }
+});
+
+// Set selected domain (cookie mode only)
+app.post('/api/domains/select', async (req, res) => {
+  const { domainId } = req.body;
+
+  if (!domainId) {
+    return res.status(400).json({ error: 'domainId required' });
+  }
+
+  if (isServiceMode()) {
+    return res.status(400).json({ error: 'Cannot change domain in service mode' });
+  }
+
+  // Set domain cookie
+  res.cookie('takaro-domain', domainId, {
+    httpOnly: false, // Allow JS to read it for display purposes
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
+
+  // Also call Takaro to set the domain
+  try {
+    const client = await createCookieClient(req.cookies, domainId);
+    await client.user.userControllerSetSelectedDomain(domainId);
+    res.json({ success: true, domainId });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to select domain: ${error.message}` });
+  }
 });
 
 // ============== GAME SERVER ROUTES ==============
@@ -352,6 +516,46 @@ app.post('/api/players/area/radius', requireAuth, async (req, res) => {
   }
 });
 
+// ============== ITEM SEARCH ROUTES ==============
+
+// Get items for a game server (for dropdown/autocomplete)
+app.get('/api/items', requireAuth, async (req, res) => {
+  const { gameServerId, search } = req.query;
+
+  if (!gameServerId) {
+    return res.status(400).json({ error: 'gameServerId required' });
+  }
+
+  try {
+    const items = await req.session.takaroClient.getItems(gameServerId, search || null);
+    res.json({ data: items });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Search players by item (who has/had a specific item)
+app.post('/api/players/item', requireAuth, async (req, res) => {
+  const { itemId, startDate, endDate } = req.body;
+
+  console.log('  🔍 Item search:', { itemId, startDate, endDate });
+
+  if (!itemId) {
+    return res.status(400).json({ error: 'itemId is required' });
+  }
+
+  try {
+    const results = await req.session.takaroClient.getPlayersByItem(itemId, startDate, endDate);
+
+    // Enrich with player names from Takaro
+    const enrichedResults = await enrichWithPlayerNames(req.session.takaroClient, results);
+
+    res.json({ data: enrichedResults });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============== START SERVER ==============
 
 async function startServer() {
@@ -376,10 +580,9 @@ async function startServer() {
     };
 
     console.log('Service mode active - no login required');
-  } else {
-    console.error(
-      'ERROR: Service mode not active. Please set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables.'
-    );
+  } else if (isCookieMode()) {
+    console.log('Cookie mode active - users must be logged into Takaro');
+    console.log('Sessions will be validated via forwarded cookies');
   }
 
   app.listen(PORT, () => {

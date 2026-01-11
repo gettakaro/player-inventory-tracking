@@ -10,6 +10,9 @@ const PlayerList = {
   areaFilterActive: false, // Track if area filter is active
   areaFilterPlayerIds: new Set(), // Player IDs from area search
   timeFilterEnabled: true, // Filter offline players by time range
+  itemFilterActive: false, // Track if item filter is active (set by PlayerInfo)
+  itemFilterPlayerIds: new Set(), // Player IDs from item search
+  itemFilterName: '', // Name of the item being filtered
 
   init() {
     this.setupEventListeners();
@@ -179,6 +182,13 @@ const PlayerList = {
     if (this.areaFilterActive) {
       filteredPlayers = filteredPlayers.filter(
         (p) => this.areaFilterPlayerIds.has(String(p.id)) || this.areaFilterPlayerIds.has(String(p.playerId))
+      );
+    }
+
+    // Apply item filter if active
+    if (this.itemFilterActive) {
+      filteredPlayers = filteredPlayers.filter(
+        (p) => this.itemFilterPlayerIds.has(String(p.id)) || this.itemFilterPlayerIds.has(String(p.playerId))
       );
     }
 
@@ -365,6 +375,9 @@ const PlayerList = {
     this.hasInitializedSelection = false; // Reset so next login selects all
     this.areaFilterActive = false;
     this.areaFilterPlayerIds.clear();
+    this.itemFilterActive = false;
+    this.itemFilterPlayerIds.clear();
+    this.itemFilterName = '';
     const searchInput = document.getElementById('player-search');
     if (searchInput) {
       searchInput.value = '';
@@ -553,6 +566,25 @@ const PlayerList = {
     } else if (indicator) {
       indicator.style.display = 'none';
     }
+  },
+
+  // Item filter methods - called by PlayerInfo when item search completes
+  setItemFilter(playerIds, itemName) {
+    this.itemFilterActive = true;
+    this.itemFilterPlayerIds.clear();
+    for (const id of playerIds) {
+      this.itemFilterPlayerIds.add(String(id));
+    }
+    this.itemFilterName = itemName;
+
+    this.render();
+  },
+
+  clearItemFilter() {
+    this.itemFilterActive = false;
+    this.itemFilterPlayerIds.clear();
+    this.itemFilterName = '';
+    this.render();
   },
 };
 

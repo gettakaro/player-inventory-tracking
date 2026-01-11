@@ -199,6 +199,11 @@ const App = {
       Heatmap.init(gameServerId);
     }
 
+    // Load items for autocomplete (in Item Search tab)
+    if (window.PlayerInfo) {
+      PlayerInfo.loadItems(gameServerId);
+    }
+
     // Start player marker updates - fetch from API directly
     Players.startAutoRefresh(gameServerId, 30000);
   },

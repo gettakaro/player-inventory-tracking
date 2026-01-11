@@ -1,33 +1,111 @@
-// Authentication handling - Service mode only
+// Authentication handling - Supports both Service mode and Cookie mode
 
 const Auth = {
   isLoggedIn: false,
   serviceMode: true,
+  cookieMode: false,
+  availableDomains: [],
 
   async init() {
-    // Check if service mode is active (auto-login)
     try {
       const status = await API.getAuthStatus();
 
-      if (status.serviceMode && status.authenticated) {
-        // Service mode - already authenticated!
-        this.serviceMode = true;
+      this.serviceMode = status.mode === 'service';
+      this.cookieMode = status.mode === 'cookie';
+
+      if (status.authenticated) {
         this.isLoggedIn = true;
-        API.setSession(status.sessionId);
-        if (status.domain) {
-          API.setDomain(status.domain);
+
+        if (this.serviceMode) {
+          // Service mode - use provided session
+          API.setSession(status.sessionId);
+          if (status.domain) {
+            API.setDomain(status.domain);
+          }
+          this.showLoggedInState('Service Mode');
+        } else {
+          // Cookie mode - already authenticated via cookies
+          this.availableDomains = status.availableDomains || [];
+
+          if (!status.domain && this.availableDomains.length > 0) {
+            // No domain selected - show domain selector
+            this.showDomainSelector();
+            return true;
+          }
+
+          if (status.domain) {
+            API.setDomain(status.domain);
+          }
+          this.showLoggedInState('Cookie Mode');
         }
-        this.showLoggedInState();
+
         await this.loadGameServers();
         return true;
       }
+
+      // Not authenticated
+      if (this.cookieMode && status.needsLogin) {
+        this.showLoginRequired(status.loginUrl);
+      } else {
+        this.showNotConfiguredState();
+      }
+
+      return false;
     } catch (error) {
       console.warn('Failed to check auth status:', error);
+      this.showNotConfiguredState();
+      return false;
     }
+  },
 
-    // Not in service mode - show error
-    this.showNotConfiguredState();
-    return false;
+  showLoginRequired(loginUrl) {
+    document.getElementById('config-panel').style.display = 'block';
+    document.getElementById('map-container').style.display = 'none';
+    document.getElementById('connection-status').className = 'status-indicator offline';
+    document.getElementById('connection-status').textContent = 'Not Logged In';
+    document.getElementById('server-select-container').innerHTML = `
+      <div style="text-align: center; padding: 20px;">
+        <p style="color: #ff6b6b; margin-bottom: 15px;">
+          Please log in to Takaro first to use this app.
+        </p>
+        <a href="${loginUrl}" target="_blank" class="btn btn-primary" style="display: inline-block; padding: 10px 20px; background: #4a9eff; color: white; text-decoration: none; border-radius: 4px;">
+          Log in to Takaro
+        </a>
+        <p style="color: #888; margin-top: 15px; font-size: 12px;">
+          After logging in, refresh this page.
+        </p>
+      </div>
+    `;
+  },
+
+  showDomainSelector() {
+    document.getElementById('config-panel').style.display = 'block';
+    document.getElementById('connection-status').className = 'status-indicator warning';
+    document.getElementById('connection-status').textContent = 'Select Domain';
+
+    const container = document.getElementById('server-select-container');
+    container.innerHTML = `
+      <div class="form-group">
+        <label for="domain-select">Select Domain</label>
+        <select id="domain-select" class="form-control">
+          <option value="">Select a domain...</option>
+          ${this.availableDomains.map((d) => `<option value="${d.id}">${d.name}</option>`).join('')}
+        </select>
+      </div>
+      <button id="select-domain-btn" class="btn btn-primary" style="margin-top: 10px;">Continue</button>
+    `;
+
+    document.getElementById('select-domain-btn').addEventListener('click', async () => {
+      const domainId = document.getElementById('domain-select').value;
+      if (!domainId) return;
+
+      try {
+        await API.selectDomain(domainId);
+        location.reload(); // Reload to apply domain
+      } catch (error) {
+        alert(`Failed to select domain: ${error.message}`);
+      }
+    });
   },
 
   showNotConfiguredState() {
@@ -36,13 +114,13 @@ const Auth = {
     document.getElementById('connection-status').className = 'status-indicator offline';
     document.getElementById('connection-status').textContent = 'Not Configured';
     document.getElementById('server-select-container').innerHTML =
-      '<p style="color: #ff6b6b;">Service not configured. Set TAKARO_USERNAME, TAKARO_PASSWORD, and TAKARO_DOMAIN environment variables on the server.</p>';
+      '<p style="color: #ff6b6b;">Service not configured. Please contact the administrator.</p>';
   },
 
-  showLoggedInState() {
+  showLoggedInState(modeLabel) {
     document.getElementById('config-panel').style.display = 'block';
     document.getElementById('connection-status').className = 'status-indicator online';
-    document.getElementById('connection-status').textContent = 'Connected (Service Mode)';
+    document.getElementById('connection-status').textContent = `Connected (${modeLabel})`;
   },
 
   showMapView() {

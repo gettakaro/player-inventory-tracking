@@ -156,41 +156,89 @@
       <!-- Map -->
       <div id="map"></div>
 
-      <!-- Player Info Panel -->
-      <div id="player-info-panel" class="player-info-panel" style="display: none;">
-        <div class="player-info-header">
-          <h3 id="player-info-name">Player Name</h3>
-          <button id="close-player-info" class="btn btn-icon" title="Close">&times;</button>
-        </div>
-        <div class="player-info-content">
-          <div class="player-info-stats" id="player-info-stats">
-            <!-- Basic stats: position, status, playtime, currency, last seen -->
+      <!-- Bottom Panel with Top-Level Tabs -->
+      <div id="bottom-panel" class="bottom-panel" style="display: none;">
+        <div class="bottom-panel-header">
+          <div class="bottom-panel-tabs">
+            <button class="top-tab-btn active" data-top-tab="player-info">Player Info</button>
+            <button class="top-tab-btn" data-top-tab="item-search">Item Search</button>
           </div>
-          <div class="player-info-tabs-container">
-            <div class="player-info-tabs">
-              <button class="tab-btn active" data-tab="inventory">Inventory</button>
-              <button class="tab-btn" data-tab="movement">Movement</button>
-            </div>
-            <div class="tab-content">
-              <div id="tab-inventory" class="tab-pane active">
-                <div class="player-info-inventory">
-                  <div class="inventory-current">
-                    <h4>Current Inventory</h4>
-                    <div id="current-inventory-table"></div>
+          <div class="bottom-panel-actions">
+            <button id="expand-bottom-panel" class="btn btn-icon" title="Expand panel">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+            </button>
+            <button id="close-bottom-panel" class="btn btn-icon" title="Close">&times;</button>
+          </div>
+        </div>
+
+        <!-- Top-Level Tab Content -->
+        <div class="top-tab-content">
+          <!-- Player Info Tab -->
+          <div id="top-tab-player-info" class="top-tab-pane active">
+            <div class="player-info-content">
+              <div class="player-info-header-row">
+                <h3 id="player-info-name">Select a player</h3>
+              </div>
+              <div class="player-info-stats" id="player-info-stats">
+                <!-- Basic stats: position, status, playtime, currency, last seen -->
+              </div>
+              <div class="player-info-tabs-container">
+                <div class="player-info-tabs">
+                  <button class="tab-btn active" data-tab="inventory">Inventory</button>
+                  <button class="tab-btn" data-tab="movement">Movement</button>
+                </div>
+                <div class="tab-content">
+                  <div id="tab-inventory" class="tab-pane active">
+                    <div class="player-info-inventory">
+                      <div class="inventory-current">
+                        <h4>Current Inventory</h4>
+                        <div id="current-inventory-table"></div>
+                      </div>
+                      <div class="inventory-timeline">
+                        <h4>Inventory Changes</h4>
+                        <div class="timeline-note">Using time range from controls above</div>
+                        <div id="inventory-diff-list"></div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="inventory-timeline">
-                    <h4>Inventory Changes</h4>
-                    <div class="timeline-note">Using time range from controls above</div>
-                    <div id="inventory-diff-list"></div>
+                  <div id="tab-movement" class="tab-pane">
+                    <div class="movement-stats" id="movement-stats">
+                      <!-- Distance, speed stats -->
+                    </div>
+                    <div class="movement-timeline" id="movement-timeline">
+                      <!-- Position timeline -->
+                    </div>
                   </div>
                 </div>
               </div>
-              <div id="tab-movement" class="tab-pane">
-                <div class="movement-stats" id="movement-stats">
-                  <!-- Distance, speed stats -->
+            </div>
+          </div>
+
+          <!-- Item Search Tab -->
+          <div id="top-tab-item-search" class="top-tab-pane">
+            <div class="item-search-tab-content">
+              <div class="item-search-input-section">
+                <div class="item-search-wrapper">
+                  <input type="text" id="item-search" class="item-search" placeholder="Search for an item..." list="item-suggestions" autocomplete="off" />
+                  <datalist id="item-suggestions"></datalist>
                 </div>
-                <div class="movement-timeline" id="movement-timeline">
-                  <!-- Position timeline -->
+                <div id="item-filter-indicator" class="item-filter-indicator" style="display: none;">
+                  <span id="item-filter-text">Searching for: </span>
+                  <button id="clear-item-filter-btn" class="btn btn-sm">Clear</button>
+                </div>
+              </div>
+              <div class="item-search-results">
+                <div class="item-search-header">
+                  <h4>Players with this item</h4>
+                  <div id="item-search-query" class="item-search-query"></div>
+                </div>
+                <div id="item-search-results-list" class="item-search-results-list">
+                  <div class="item-search-empty">Search for an item above or click an item in a player's inventory to find all players who have had it.</div>
                 </div>
               </div>
             </div>

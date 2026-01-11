@@ -5,6 +5,11 @@ const PlayerInfo = {
   selectedPlayer: null,
   inventoryHistory: [],
   isLoading: false,
+  isExpanded: false,
+  itemSearchResults: [], // Results from item search
+  currentItemSearch: null, // Current item being searched
+  items: [], // Cached items for autocomplete
+  gameServerId: null, // Current game server
 
   // Base URL for 7DTD item icons from CSMM repository
   ICON_BASE_URL:
@@ -16,31 +21,129 @@ const PlayerInfo = {
 
   setupEventListeners() {
     // Close button
-    const closeBtn = document.getElementById('close-player-info');
+    const closeBtn = document.getElementById('close-bottom-panel');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => this.hidePanel());
     }
 
-    // Tab switching
+    // Expand/collapse button
+    const expandBtn = document.getElementById('expand-bottom-panel');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', () => this.toggleExpand());
+    }
+
+    // Top-level tab switching (Player Info / Item Search)
+    document.querySelectorAll('.top-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const tabId = e.target.dataset.topTab;
+        this.switchTopTab(tabId);
+      });
+    });
+
+    // Sub-tab switching within Player Info (Inventory / Movement)
     document.querySelectorAll('.player-info-tabs .tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const tabId = e.target.dataset.tab;
-        this.switchTab(tabId);
+        this.switchSubTab(tabId);
       });
     });
+
+    // Item search input in Item Search tab
+    const itemSearchInput = document.getElementById('item-search');
+    if (itemSearchInput) {
+      // Debounced search for autocomplete
+      let searchTimeout;
+      itemSearchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        const query = e.target.value.trim();
+
+        searchTimeout = setTimeout(async () => {
+          if (query.length >= 2) {
+            await this.updateItemSuggestions(query);
+          }
+        }, 300);
+      });
+
+      // Handle selection from datalist
+      itemSearchInput.addEventListener('change', async (e) => {
+        const selectedName = e.target.value.trim();
+        if (!selectedName) return;
+
+        // Find the item in our cached items
+        const item = this.items.find((i) => i.name === selectedName);
+        if (item && item.id) {
+          await this.searchByItemId(item.id, item.name);
+        }
+      });
+
+      // Handle Enter key
+      itemSearchInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+          const selectedName = e.target.value.trim();
+          if (!selectedName) return;
+
+          const item = this.items.find((i) => i.name === selectedName);
+          if (item && item.id) {
+            await this.searchByItemId(item.id, item.name);
+          }
+        }
+      });
+    }
+
+    // Clear item filter button
+    const clearFilterBtn = document.getElementById('clear-item-filter-btn');
+    if (clearFilterBtn) {
+      clearFilterBtn.addEventListener('click', () => {
+        this.clearItemFilter();
+      });
+    }
 
     // Listen for time range changes to refresh inventory history
     // TimeRange calls its callback when changed, we'll hook into that via app.js
   },
 
-  switchTab(tabId) {
-    // Update tab buttons
+  toggleExpand() {
+    const panel = document.getElementById('bottom-panel');
+    const expandBtn = document.getElementById('expand-bottom-panel');
+    if (!panel) return;
+
+    this.isExpanded = !this.isExpanded;
+    panel.classList.toggle('expanded', this.isExpanded);
+
+    // Update button title
+    if (expandBtn) {
+      expandBtn.title = this.isExpanded ? 'Restore panel' : 'Expand panel';
+    }
+  },
+
+  // Switch between top-level tabs (Player Info / Item Search)
+  switchTopTab(tabId) {
+    // Update top-level tab buttons
+    document.querySelectorAll('.top-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.topTab === tabId);
+    });
+
+    // Update top-level tab panes
+    document.querySelectorAll('.top-tab-pane').forEach((pane) => {
+      pane.classList.toggle('active', pane.id === `top-tab-${tabId}`);
+    });
+
+    // Show the panel if it's hidden
+    const panel = document.getElementById('bottom-panel');
+    if (panel) {
+      panel.style.display = 'flex';
+    }
+  },
+
+  // Switch between sub-tabs within Player Info (Inventory / Movement)
+  switchSubTab(tabId) {
+    // Update sub-tab buttons
     document.querySelectorAll('.player-info-tabs .tab-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.tab === tabId);
     });
 
-    // Update tab panes
-    document.querySelectorAll('.tab-pane').forEach((pane) => {
+    // Update sub-tab panes
+    document.querySelectorAll('#top-tab-player-info .tab-pane').forEach((pane) => {
       pane.classList.toggle('active', pane.id === `tab-${tabId}`);
     });
 
@@ -66,11 +169,12 @@ const PlayerInfo = {
     this.selectedPlayerId = player.playerId || playerId;
     this.selectedPlayer = player;
 
-    // Show panel
-    const panel = document.getElementById('player-info-panel');
+    // Show panel and switch to Player Info tab
+    const panel = document.getElementById('bottom-panel');
     if (panel) {
       panel.style.display = 'flex';
     }
+    this.switchTopTab('player-info');
 
     // Update player name
     const nameEl = document.getElementById('player-info-name');
@@ -88,13 +192,21 @@ const PlayerInfo = {
   },
 
   hidePanel() {
-    const panel = document.getElementById('player-info-panel');
+    const panel = document.getElementById('bottom-panel');
     if (panel) {
       panel.style.display = 'none';
+      panel.classList.remove('expanded');
     }
     this.selectedPlayerId = null;
     this.selectedPlayer = null;
     this.inventoryHistory = [];
+    this.isExpanded = false;
+
+    // Reset expand button title
+    const expandBtn = document.getElementById('expand-bottom-panel');
+    if (expandBtn) {
+      expandBtn.title = 'Expand panel';
+    }
   },
 
   renderPlayerStats(player) {
@@ -306,7 +418,8 @@ const PlayerInfo = {
             ? `<span class="item-quality">Q${item.quality}</span>`
             : '';
         const icon = this.createItemIcon(itemCode);
-        return `<tr>
+        const itemId = item.itemId || '';
+        return `<tr data-item-id="${itemId}" data-item-name="${this.escapeHtml(displayName)}" data-item-code="${this.escapeHtml(itemCode)}">
         <td class="item-name">${icon}${this.escapeHtml(displayName)}${quality}</td>
         <td class="item-count">${item.quantity || 1}</td>
       </tr>`;
@@ -324,6 +437,9 @@ const PlayerInfo = {
         </table>
       </div>
     `;
+
+    // Make inventory items clickable
+    this.attachInventoryClickHandlers();
   },
 
   renderInventoryDiff(inventory) {
@@ -593,6 +709,324 @@ const PlayerInfo = {
       .join('');
 
     timelineContainer.innerHTML = entriesHtml || '<div class="movement-empty">No movement data</div>';
+  },
+
+  // Load items for autocomplete
+  async loadItems(gameServerId) {
+    this.gameServerId = gameServerId;
+    try {
+      this.items = await API.getItems(gameServerId);
+      console.log(`[PlayerInfo] Loaded ${this.items.length} items for autocomplete`);
+    } catch (error) {
+      console.error('[PlayerInfo] Failed to load items:', error);
+      this.items = [];
+    }
+  },
+
+  // Update item suggestions in datalist based on search query
+  async updateItemSuggestions(query) {
+    if (!this.gameServerId) return;
+
+    try {
+      // Fetch items matching the query
+      const items = await API.getItems(this.gameServerId, query);
+      this.items = items;
+
+      // Update datalist
+      const datalist = document.getElementById('item-suggestions');
+      if (datalist) {
+        datalist.innerHTML = items
+          .slice(0, 20)
+          .map((item) => `<option value="${this.escapeHtml(item.name)}">`)
+          .join('');
+      }
+    } catch (error) {
+      console.error('[PlayerInfo] Failed to fetch item suggestions:', error);
+    }
+  },
+
+  // Clear item filter
+  clearItemFilter() {
+    this.currentItemSearch = null;
+    this.itemSearchResults = [];
+
+    // Clear input
+    const input = document.getElementById('item-search');
+    if (input) input.value = '';
+
+    // Hide filter indicator
+    const indicator = document.getElementById('item-filter-indicator');
+    if (indicator) indicator.style.display = 'none';
+
+    // Clear results
+    const resultsContainer = document.getElementById('item-search-results-list');
+    if (resultsContainer) {
+      resultsContainer.innerHTML =
+        '<div class="item-search-empty">Search for an item above or click an item in a player\'s inventory to find all players who have had it.</div>';
+    }
+
+    // Clear query display
+    const queryEl = document.getElementById('item-search-query');
+    if (queryEl) queryEl.innerHTML = '';
+
+    // Clear player list filter
+    if (window.PlayerList) {
+      PlayerList.clearItemFilter();
+    }
+  },
+
+  // Item search functionality - search for players who have had a specific item
+
+  // Search by item ID directly (called when clicking an item in inventory)
+  async searchByItemId(itemId, itemName, startDate, endDate) {
+    console.log(`[PlayerInfo] Searching for players with item ID: ${itemId} (${itemName})`);
+
+    this.currentItemSearch = { itemId, itemName };
+
+    // Show loading in the item search tab
+    const resultsContainer = document.getElementById('item-search-results-list');
+    const queryEl = document.getElementById('item-search-query');
+
+    if (queryEl) {
+      queryEl.innerHTML = `Searching for: <strong>${this.escapeHtml(itemName)}</strong>`;
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML = '<div class="loading-text">Searching for players...</div>';
+    }
+
+    // Show the bottom panel and switch to Item Search top-level tab
+    const panel = document.getElementById('bottom-panel');
+    if (panel) {
+      panel.style.display = 'flex';
+    }
+    this.switchTopTab('item-search');
+
+    // Update filter indicator
+    const indicator = document.getElementById('item-filter-indicator');
+    const filterText = document.getElementById('item-filter-text');
+    if (indicator && filterText) {
+      filterText.textContent = `Searching for: ${itemName}`;
+      indicator.style.display = 'flex';
+    }
+
+    try {
+      // Get time range if not provided
+      if (!startDate || !endDate) {
+        const range = window.TimeRange
+          ? TimeRange.getDateRange()
+          : { start: new Date(Date.now() - 24 * 60 * 60 * 1000), end: new Date() };
+        startDate = startDate || range.start.toISOString();
+        endDate = endDate || range.end.toISOString();
+      }
+
+      // Call the API
+      const results = await API.getPlayersByItem(itemId, startDate, endDate);
+      this.itemSearchResults = results;
+
+      // Extract player IDs and update filter
+      const playerIds = [...new Set(results.map((r) => r.playerId))];
+
+      // Update player list filter
+      if (window.PlayerList) {
+        PlayerList.setItemFilter(playerIds, itemName, results);
+      }
+
+      // Render results in the Item Search tab
+      this.renderItemSearchResults(itemName, results);
+    } catch (error) {
+      console.error('[PlayerInfo] Item search error:', error);
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `<div class="error-text">Search failed: ${this.escapeHtml(error.message)}</div>`;
+      }
+    }
+  },
+
+  // Search by item name (called from search input)
+  async searchByItemName(itemName, startDate, endDate) {
+    console.log(`[PlayerInfo] Searching by item name: "${itemName}"`);
+
+    // We need to find an itemId that matches this name
+    // First, check our cached items from autocomplete
+    let matchingItem = this.items.find((item) => item.name && item.name.toLowerCase() === itemName.toLowerCase());
+
+    // If not found in items, check inventory history
+    if (!matchingItem && this.inventoryHistory && this.inventoryHistory.length > 0) {
+      const inventoryMatch = this.inventoryHistory.find(
+        (item) =>
+          (item.itemName && item.itemName.toLowerCase().includes(itemName.toLowerCase())) ||
+          (item.itemCode && item.itemCode.toLowerCase().includes(itemName.toLowerCase()))
+      );
+      if (inventoryMatch && inventoryMatch.itemId) {
+        matchingItem = { id: inventoryMatch.itemId, name: inventoryMatch.itemName || inventoryMatch.itemCode };
+        console.log(`[PlayerInfo] Found item ID in inventory cache: ${matchingItem.id}`);
+      }
+    }
+
+    // If we still don't have an itemId, show a message
+    if (!matchingItem || !matchingItem.id) {
+      const resultsContainer = document.getElementById('item-search-results-list');
+      const queryEl = document.getElementById('item-search-query');
+
+      if (queryEl) {
+        queryEl.innerHTML = `Searching for: <strong>${this.escapeHtml(itemName)}</strong>`;
+      }
+
+      // Switch to Item Search tab
+      const panel = document.getElementById('bottom-panel');
+      if (panel) panel.style.display = 'flex';
+      this.switchTopTab('item-search');
+
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `
+          <div class="item-search-hint">
+            <p>Item not found. Try selecting from the dropdown suggestions or click on an item in a player's inventory.</p>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // We have an itemId, perform the search
+    await this.searchByItemId(matchingItem.id, matchingItem.name || itemName, startDate, endDate);
+  },
+
+  // Render item search results in the Item Search tab
+  showItemSearchResults(itemName, results) {
+    this.renderItemSearchResults(itemName, results);
+  },
+
+  renderItemSearchResults(itemName, results) {
+    const resultsContainer = document.getElementById('item-search-results-list');
+    const queryEl = document.getElementById('item-search-query');
+
+    if (queryEl) {
+      queryEl.innerHTML = `Results for: <strong>${this.escapeHtml(itemName)}</strong>`;
+    }
+
+    if (!resultsContainer) return;
+
+    if (!results || results.length === 0) {
+      resultsContainer.innerHTML =
+        '<div class="item-search-empty">No players found with this item in the selected time range.</div>';
+      return;
+    }
+
+    // Group results by player
+    const byPlayer = {};
+    for (const result of results) {
+      const playerId = result.playerId;
+      if (!byPlayer[playerId]) {
+        byPlayer[playerId] = {
+          playerId,
+          playerName: result.playerName || 'Unknown',
+          entries: [],
+        };
+      }
+      byPlayer[playerId].entries.push({
+        quantity: result.quantity || 1,
+        quality: result.quality,
+        createdAt: result.createdAt,
+      });
+    }
+
+    // Sort entries within each player by time (most recent first)
+    for (const playerId in byPlayer) {
+      byPlayer[playerId].entries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    // Sort players by most recent entry
+    const sortedPlayers = Object.values(byPlayer).sort((a, b) => {
+      const aTime = new Date(a.entries[0].createdAt);
+      const bTime = new Date(b.entries[0].createdAt);
+      return bTime - aTime;
+    });
+
+    // Render player cards
+    const html = sortedPlayers
+      .map((player) => {
+        const entriesHtml = player.entries
+          .slice(0, 5)
+          .map((entry) => {
+            const time = this.formatRelativeTime(entry.createdAt);
+            const quality = entry.quality && entry.quality !== '-1' ? ` Q${entry.quality}` : '';
+            return `<div class="item-entry">x${entry.quantity}${quality}, ${time}</div>`;
+          })
+          .join('');
+
+        const moreCount =
+          player.entries.length > 5 ? `<div class="item-entry-more">+${player.entries.length - 5} more</div>` : '';
+
+        return `
+        <div class="item-player-card" data-player-id="${player.playerId}">
+          <div class="item-player-name">${this.escapeHtml(player.playerName)}</div>
+          <div class="item-player-entries">
+            ${entriesHtml}
+            ${moreCount}
+          </div>
+        </div>
+      `;
+      })
+      .join('');
+
+    resultsContainer.innerHTML = html;
+
+    // Attach click handlers to player cards - click opens player in Player Info tab
+    resultsContainer.querySelectorAll('.item-player-card').forEach((card) => {
+      card.addEventListener('click', async () => {
+        const playerId = card.dataset.playerId;
+
+        // Show the player's info in the Player Info tab
+        await this.showPlayer(playerId);
+
+        // Also focus on the player in the map if available
+        if (window.Players && Players.focusPlayer) {
+          Players.focusPlayer(playerId);
+        }
+      });
+    });
+  },
+
+  formatRelativeTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  },
+
+  // Make inventory items clickable for item search
+  attachInventoryClickHandlers() {
+    const inventoryTable = document.querySelector('.inventory-table tbody');
+    if (!inventoryTable) return;
+
+    inventoryTable.querySelectorAll('tr').forEach((row) => {
+      row.classList.add('clickable-item');
+      row.addEventListener('click', () => {
+        const itemId = row.dataset.itemId;
+        const itemName = row.dataset.itemName;
+        const itemCode = row.dataset.itemCode;
+
+        if (itemId) {
+          this.searchByItemId(itemId, itemName || itemCode);
+        } else {
+          // Fallback: try to find itemId in inventory history
+          const item = this.inventoryHistory.find((i) => i.itemName === itemName || i.itemCode === itemCode);
+          if (item && item.itemId) {
+            this.searchByItemId(item.itemId, itemName || itemCode);
+          } else {
+            // Last resort: search by name
+            this.searchByItemName(itemName || itemCode);
+          }
+        }
+      });
+    });
   },
 };
 

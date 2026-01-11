@@ -103,58 +103,55 @@ The `0` at the end grants full permissions. Use a strong, unique token secret.
 ┌─────────────────────────────────────────┐
 │           Browser (Frontend)            │
 │  HTML/CSS/JS - Leaflet.js via CDN       │
+│  localStorage for UI state              │
 └─────────────────────────────────────────┘
                     │
                     ▼
 ┌─────────────────────────────────────────┐
 │         Node.js Backend (Express)       │
 ├─────────────────────────────────────────┤
-│ • Session management                    │
-│ • Proxy Takaro API (player data)        │
-│ • Proxy 7D2D API (map tiles)            │
-│ • Redis caching layer                   │
-│ • Periodic position polling (30s)       │
+│ • Service mode authentication           │
+│ • Proxy Takaro API (player/event data)  │
+│ • Redis cache (with in-memory fallback) │
+│ • Disk cache for map tiles              │
 └─────────────────────────────────────────┘
-        │                   │
-        ▼                   ▼
-┌───────────────┐  ┌────────────────────┐
-│  Takaro API   │  │  7D2D Server API   │
-└───────────────┘  └────────────────────┘
+                    │
+                    ▼
+            ┌───────────────┐
+            │  Takaro API   │
+            └───────────────┘
 ```
 
 ## Data Storage
 
-- Map tiles and API responses are cached in Redis for performance
-- Cache uses TTL-based expiration (player data: 30s, map metadata: 1h, tiles: 24h)
-- Falls back to memory cache if Redis is unavailable
+- All player and event data is fetched from the Takaro API (no local persistence)
+- Redis cache layer with TTL-based expiration (falls back to in-memory if Redis unavailable)
+- Map tiles are cached to disk in `cache/tiles/`
 
 ## API Endpoints
 
 ### Authentication
-- `POST /api/login` - Login with Takaro credentials
-- `POST /api/logout` - Logout and clear session
+- `GET /api/auth/status` - Check service mode status
 
-### Configuration
+### Game Servers
 - `GET /api/gameservers` - List available game servers
-- `POST /api/sdtd-config` - Save 7D2D connection config
-- `GET /api/sdtd-configs` - List saved configs
 
 ### Players
-- `GET /api/players?gameServerId=xxx` - Get current players from Takaro
-- `GET /api/all-players?gameServerId=xxx` - Get all players including offline
+- `GET /api/players?gameServerId=xxx` - Get all players (online and offline)
+- `GET /api/inventory/:playerId` - Get player inventory history
+- `GET /api/player-history/:gameServerId/:playerId` - Get player movement history
+- `GET /api/movement-paths?gameServerId=xxx` - Get movement paths for all players
 
 ### Map
 - `GET /api/map-info/:gameServerId` - Get map configuration
-- `GET /api/map/:gameServerId/:z/:x/:y.png` - Get map tile (proxied)
+- `GET /api/map/:gameServerId/:z/:x/:y.png` - Get map tile (cached)
 
-### History
-- `GET /api/player-history/:playerId` - Get position history for a player
-- `GET /api/movement-paths?gameServerId=xxx` - Get movement paths for all players
+### Events
+- `GET /api/events/deaths?gameServerId=xxx` - Get death events for heatmap
 
-### Tracking
-- `POST /api/tracking/start` - Start position tracking
-- `POST /api/tracking/stop` - Stop position tracking
-- `POST /api/tracking/refresh` - Force immediate refresh
+### Area Search
+- `POST /api/players/area/box` - Search players in bounding box
+- `POST /api/players/area/radius` - Search players in radius
 
 ## Troubleshooting
 

@@ -22,6 +22,7 @@
   "dependencies": {
     "@takaro/apiclient": "^0.4.10",
     "axios": "^1.6.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",

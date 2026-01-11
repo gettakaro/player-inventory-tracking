@@ -48,12 +48,21 @@ const API = {
     const response = await fetch(url, {
       ...options,
       headers,
+      credentials: 'include', // Include cookies for cookie mode auth
     });
 
     if (response.status === 401) {
+      const data = await response.json().catch(() => ({}));
+
+      // Handle cookie mode session expiration
+      if (data.needsLogin && data.loginUrl) {
+        if (confirm('Your session has expired. Would you like to log in again?')) {
+          window.open(data.loginUrl, '_blank');
+        }
+      }
+
       this.clearSession();
-      window.location.reload();
-      throw new Error('Session expired');
+      throw new Error(data.error || 'Session expired');
     }
 
     const data = await response.json().catch(() => ({}));
@@ -65,10 +74,26 @@ const API = {
     return data;
   },
 
-  // Check auth status (for service mode)
+  // Check auth status (for both service mode and cookie mode)
   async getAuthStatus() {
-    const response = await fetch('/api/auth/status');
+    const response = await fetch('/api/auth/status', {
+      credentials: 'include', // Include cookies for cookie mode auth
+    });
     return await response.json();
+  },
+
+  // Get available domains (for cookie mode domain selector)
+  async getDomains() {
+    const data = await this.request('/api/domains');
+    return data;
+  },
+
+  // Select a domain (cookie mode only)
+  async selectDomain(domainId) {
+    return await this.request('/api/domains/select', {
+      method: 'POST',
+      body: JSON.stringify({ domainId }),
+    });
   },
 
   // Game Servers
@@ -155,6 +180,27 @@ const API = {
         y: 0,
         z: center.z,
         radius,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      }),
+    });
+    return data.data || [];
+  },
+
+  // Get all items for a game server (for dropdown)
+  async getItems(gameServerId, search = null) {
+    let url = `/api/items?gameServerId=${gameServerId}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    const data = await this.request(url);
+    return data.data || [];
+  },
+
+  // Item Search - find players who have/had a specific item
+  async getPlayersByItem(itemId, startDate, endDate) {
+    const data = await this.request('/api/players/item', {
+      method: 'POST',
+      body: JSON.stringify({
+        itemId,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       }),

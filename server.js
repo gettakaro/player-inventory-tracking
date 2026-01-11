@@ -131,6 +131,8 @@ function hasTakaroSession(cookies) {
 // Check auth status - tells frontend the current auth mode and status
 app.get('/api/auth/status', async (req, res) => {
   const mode = getOperationMode();
+  const apiUrl = process.env.TAKARO_API_URL || 'https://api.takaro.io';
+  const dashboardUrl = apiUrl.replace('://api.', '://dashboard.');
 
   if (mode === 'service') {
     // Service mode - report if service client is ready
@@ -141,6 +143,7 @@ app.get('/api/auth/status', async (req, res) => {
       authenticated: serviceMode,
       domain: process.env.TAKARO_DOMAIN || null,
       sessionId: serviceMode ? SERVICE_SESSION_ID : null,
+      dashboardUrl,
     });
   } else {
     // Cookie mode - check if user has valid cookies
@@ -170,7 +173,8 @@ app.get('/api/auth/status', async (req, res) => {
       domain: domainId,
       availableDomains: domains,
       needsLogin: !isValid,
-      loginUrl: process.env.TAKARO_API_URL || 'https://api.takaro.io',
+      loginUrl: apiUrl,
+      dashboardUrl,
     });
   }
 });

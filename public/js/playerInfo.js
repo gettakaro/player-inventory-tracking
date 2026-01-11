@@ -219,7 +219,7 @@ const PlayerInfo = {
     const currency =
       player.currency !== null && player.currency !== undefined ? player.currency.toLocaleString() : null;
 
-    const profileUrl = player.playerId ? `https://dashboard.takaro.io/player/${player.playerId}/info` : null;
+    const profileUrl = player.playerId ? `${Auth.dashboardUrl}/player/${player.playerId}/info` : null;
 
     // Get current color for player
     const playerId = player.playerId;

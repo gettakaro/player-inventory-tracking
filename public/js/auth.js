@@ -5,6 +5,7 @@ const Auth = {
   serviceMode: true,
   cookieMode: false,
   availableDomains: [],
+  dashboardUrl: 'https://dashboard.takaro.io',
 
   async init() {
     try {
@@ -12,6 +13,7 @@ const Auth = {
 
       this.serviceMode = status.mode === 'service';
       this.cookieMode = status.mode === 'cookie';
+      this.dashboardUrl = status.dashboardUrl || 'https://dashboard.takaro.io';
 
       if (status.authenticated) {
         this.isLoggedIn = true;

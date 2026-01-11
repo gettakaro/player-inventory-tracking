@@ -98,7 +98,7 @@ const Players = {
   createPopupContent(player) {
     const lastSeen = player.lastSeen ? new Date(player.lastSeen).toLocaleString() : 'Now';
 
-    const profileUrl = player.playerId ? `https://dashboard.takaro.io/player/${player.playerId}/info` : null;
+    const profileUrl = player.playerId ? `${Auth.dashboardUrl}/player/${player.playerId}/info` : null;
 
     const playtime = this.formatPlaytime(player.playtimeSeconds);
     const currency = this.formatCurrency(player.currency);

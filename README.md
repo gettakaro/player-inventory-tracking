@@ -17,6 +17,17 @@ A standalone web application for 7 Days to Die server admins to visualize player
 - Node.js 18+
 - A Takaro account with connected 7D2D server
 - 7D2D server with web API enabled (Alloc's fixes for A20 and below, or native A21+)
+- 7D2D server with map rendering enabled (see below)
+
+### 7 Days to Die Server Configuration
+
+For map tiles to work, your game server must have map rendering enabled in `serverconfig.xml`:
+
+```xml
+<property name="EnableMapRendering" value="true"/>
+```
+
+**Note:** Tiles are generated as players explore the map - they won't appear instantly for unexplored areas.
 
 ## Installation
 
@@ -156,6 +167,8 @@ The `0` at the end grants full permissions. Use a strong, unique token secret.
 ## Troubleshooting
 
 ### Map tiles not loading
+- **Ensure `EnableMapRendering` is set to `true`** in your 7D2D server's `serverconfig.xml`
+- Remember that tiles only generate as players explore - unexplored areas will be blank
 - Verify your 7D2D server has the web API enabled
 - Check the host and port are correct
 - Ensure your web token has map access permissions

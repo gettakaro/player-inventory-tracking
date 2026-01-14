@@ -23,6 +23,10 @@ class Cache {
     try {
       this.redis = createClient({
         url: process.env.REDIS_URL || 'redis://localhost:6379',
+        socket: {
+          connectTimeout: 5000, // 5 second timeout
+          reconnectStrategy: false, // Don't retry, just fall back to memory
+        },
       });
 
       this.redis.on('error', () => {

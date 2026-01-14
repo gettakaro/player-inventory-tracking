@@ -139,9 +139,14 @@ export const API = {
     return `/api/map/${gameServerId}/{z}/{x}/{y}.png`;
   },
 
-  // Players - now returns ALL players (online and offline)
-  async getPlayers(gameServerId: string): Promise<Player[]> {
-    const data = await this.request<ApiResponse<Player[]>>(`/api/players?gameServerId=${gameServerId}`);
+  // Players - returns online players + offline players within date range (if provided)
+  // Set loadAll=true to fetch ALL players (slow for large servers)
+  async getPlayers(gameServerId: string, startDate?: string, endDate?: string, loadAll = false): Promise<Player[]> {
+    let url = `/api/players?gameServerId=${gameServerId}`;
+    if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
+    if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
+    if (loadAll) url += '&loadAll=true';
+    const data = await this.request<ApiResponse<Player[]>>(url);
     return data.data || [];
   },
 
@@ -253,6 +258,32 @@ export const API = {
       }),
     });
     return data.data || [];
+  },
+
+  // Give item to player
+  async giveItem(
+    gameServerId: string,
+    playerId: string,
+    itemName: string,
+    amount: number,
+    quality: string = '1'
+  ): Promise<{ success: boolean; message: string }> {
+    return await this.request<{ success: boolean; message: string }>(`/api/player/${playerId}/give-item`, {
+      method: 'POST',
+      body: JSON.stringify({ gameServerId, itemName, amount, quality }),
+    });
+  },
+
+  // Add currency to player
+  async addCurrency(
+    gameServerId: string,
+    playerId: string,
+    currency: number
+  ): Promise<{ success: boolean; message: string }> {
+    return await this.request<{ success: boolean; message: string }>(`/api/player/${playerId}/add-currency`, {
+      method: 'POST',
+      body: JSON.stringify({ gameServerId, currency }),
+    });
   },
 };
 

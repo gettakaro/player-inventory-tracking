@@ -123,6 +123,11 @@ interface TakaroSDKClient {
     gameServerControllerGetMapInfo(gameServerId: string): Promise<{
       data: { data: TakaroMapInfo };
     }>;
+    gameServerControllerGiveItem(
+      gameServerId: string,
+      playerId: string,
+      body: { name: string; amount: number; quality: string }
+    ): Promise<{ data: unknown }>;
   };
   playerOnGameserver: {
     playerOnGameServerControllerSearch(params: {
@@ -136,6 +141,11 @@ interface TakaroSDKClient {
         meta?: { total?: number };
       };
     }>;
+    playerOnGameServerControllerAddCurrency(
+      gameServerId: string,
+      playerId: string,
+      body: { currency: number }
+    ): Promise<{ data: unknown }>;
   };
   player: {
     playerControllerSearch(params: {
@@ -453,16 +463,22 @@ export class TakaroClient {
     return data;
   }
 
-  async getPlayers(gameServerId: string): Promise<NormalizedPlayer[]> {
+  async getPlayers(gameServerId: string, startDate?: string, endDate?: string, loadAll = false): Promise<NormalizedPlayer[]> {
     if (!this.client) throw new Error('Client not initialized');
 
-    // Check cache first
-    const cacheKey = cache.key('players', this.domain || 'service', gameServerId);
+    // Cache key includes date range and loadAll flag
+    const cacheKey = cache.key(
+      'players',
+      this.domain || 'service',
+      gameServerId,
+      loadAll ? 'all' : (startDate || 'nostart'),
+      loadAll ? 'all' : (endDate || 'noend')
+    );
     const cached = await cache.get<NormalizedPlayer[]>(cacheKey);
     if (cached) return cached;
 
     // Check if there's already an in-flight request for this data
-    const inFlightKey = `players:${this.domain || 'service'}:${gameServerId}`;
+    const inFlightKey = `players:${this.domain || 'service'}:${gameServerId}:${loadAll ? 'all' : startDate || 'nostart'}:${loadAll ? 'all' : endDate || 'noend'}`;
     const inFlight = inFlightRequests.get(inFlightKey);
     if (inFlight) {
       console.log(`  ⏳ Waiting for in-flight request: ${inFlightKey}`);
@@ -472,24 +488,79 @@ export class TakaroClient {
     // Create the fetch promise and store it
     const fetchPromise = (async () => {
       const start = Date.now();
-      // Get ALL players from POG (Player On Gameserver) endpoint with pagination
-      const pogs = await fetchAllPaginated(
-        (page, limit) =>
-          this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let allPogs: any[] = [];
+
+      if (loadAll) {
+        // LOAD ALL: Fetch all players via pagination (slow but complete)
+        console.log('  → Fetching ALL players (this may take a while)...');
+        allPogs = await fetchAllPaginated(
+          (page, limit) =>
+            this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+              filters: {
+                gameServerId: [gameServerId],
+              },
+              extend: ['player'],
+              page,
+              limit,
+            }),
+          100 // Page size
+        );
+        logApiCall('getPlayers (ALL)', start, allPogs.length);
+      } else {
+        // FAST MODE: Fetch online players first (fast, small), then limited offline players
+        // This is MUCH faster than fetching all 2000+ players
+
+        // 1. Get ONLINE players (usually small number, fast)
+        console.log('  → Fetching online players...');
+        const onlineResponse = await this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+          filters: {
+            gameServerId: [gameServerId],
+            online: [true],
+          } as { gameServerId: string[]; online: boolean[] },
+          extend: ['player'],
+          limit: 100, // Online players rarely exceed this
+        });
+        const onlinePogs = onlineResponse.data.data || [];
+        logApiCall('getPlayers (online)', start, onlinePogs.length);
+
+        // 2. Get recent OFFLINE players (limited fetch, filter by date)
+        let offlinePogs: typeof onlinePogs = [];
+        if (startDate || endDate) {
+          const offlineStart = Date.now();
+          console.log('  → Fetching recent offline players...');
+
+          // Fetch limited offline players - we'll filter by date
+          const offlineResponse = await this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
             filters: {
               gameServerId: [gameServerId],
-              // No online filter = get ALL players (online and offline)
-            },
+              online: [false],
+            } as { gameServerId: string[]; online: boolean[] },
             extend: ['player'],
-            page,
-            limit,
-          }),
-        100 // Page size
-      );
+            limit: 500, // Reasonable limit for offline players
+          });
+          offlinePogs = offlineResponse.data.data || [];
 
-      logApiCall('getPlayers (POG search)', start, pogs.length);
+          // Filter by date range
+          const startTime = startDate ? new Date(startDate).getTime() : 0;
+          const endTime = endDate ? new Date(endDate).getTime() : Date.now();
 
-      const players = pogs.map((pog) => ({
+          offlinePogs = offlinePogs.filter((pog) => {
+            if (!pog.lastSeen) return false;
+            const lastSeenTime = new Date(pog.lastSeen).getTime();
+            return lastSeenTime >= startTime && lastSeenTime <= endTime;
+          });
+
+          logApiCall('getPlayers (offline filtered)', offlineStart, offlinePogs.length);
+        }
+
+        // Combine online and filtered offline players
+        allPogs = [...onlinePogs, ...offlinePogs];
+        logApiCall('getPlayers (total)', start, allPogs.length);
+      }
+
+      const players = allPogs.map((pog) => ({
         id: pog.id,
         playerId: pog.playerId,
         name: pog.player?.name || 'Unknown',
@@ -504,8 +575,8 @@ export class TakaroClient {
         online: pog.online ?? false,
       }));
 
-      // Cache for 60 seconds
-      await cache.set(cacheKey, players, TTL.PLAYERS_LIST);
+      // Cache - longer TTL for loadAll since it's expensive
+      await cache.set(cacheKey, players, loadAll ? 60 : TTL.PLAYERS_LIST);
       return players;
     })();
 
@@ -965,6 +1036,64 @@ export class TakaroClient {
         axiosError.message ||
         'Failed to get movement paths';
       console.error('Takaro movement paths API error:', axiosError.response?.data || axiosError.message);
+      throw new Error(message);
+    }
+  }
+
+  // Give an item to a player
+  async giveItem(
+    gameServerId: string,
+    playerId: string,
+    itemName: string,
+    amount: number,
+    quality: string = '1'
+  ): Promise<void> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    try {
+      const start = Date.now();
+      await this.client.gameserver.gameServerControllerGiveItem(gameServerId, playerId, {
+        name: itemName,
+        amount,
+        quality,
+      });
+      logApiCall(`giveItem (${amount}x ${itemName})`, start);
+    } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
+      const message =
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
+        'Failed to give item';
+      console.error('Takaro giveItem API error:', axiosError.response?.data || axiosError.message);
+      throw new Error(message);
+    }
+  }
+
+  // Add currency to a player
+  async addCurrency(gameServerId: string, playerId: string, currency: number): Promise<void> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    try {
+      const start = Date.now();
+      await this.client.playerOnGameserver.playerOnGameServerControllerAddCurrency(gameServerId, playerId, {
+        currency,
+      });
+      logApiCall(`addCurrency (${currency})`, start);
+    } catch (error) {
+      const axiosError = error as {
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        message?: string;
+      };
+      const message =
+        axiosError.response?.data?.meta?.error?.message ||
+        axiosError.response?.data?.message ||
+        axiosError.message ||
+        'Failed to add currency';
+      console.error('Takaro addCurrency API error:', axiosError.response?.data || axiosError.message);
       throw new Error(message);
     }
   }

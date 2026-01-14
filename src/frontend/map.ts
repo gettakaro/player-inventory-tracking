@@ -44,14 +44,28 @@ const SDTDGridLayer = L.GridLayer.extend({
       .replace('{x}', String(x))
       .replace('{y}', String(y));
 
-    tile.onload = () => done(undefined, tile);
-    tile.onerror = () => {
-      tile.src = '';
-      done(undefined, tile);
-    };
-    tile.crossOrigin = 'use-credentials';
-    tile.src = url;
+    // Retry logic for failed tiles
+    let retries = 0;
+    const maxRetries = 3;
+    const baseDelay = 500;
 
+    const loadTile = () => {
+      tile.onload = () => done(undefined, tile);
+      tile.onerror = () => {
+        if (retries < maxRetries) {
+          retries++;
+          const delay = baseDelay * 2 ** (retries - 1);
+          setTimeout(loadTile, delay);
+        } else {
+          tile.src = '';
+          done(undefined, tile);
+        }
+      };
+      tile.crossOrigin = 'use-credentials';
+      tile.src = retries > 0 ? `${url}?retry=${retries}` : url;
+    };
+
+    loadTile();
     return tile;
   },
 });

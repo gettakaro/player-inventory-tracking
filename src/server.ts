@@ -354,8 +354,11 @@ app.get(
 // ============== PLAYER ROUTES ==============
 
 // Get all players (from Takaro - includes online and offline)
+// Optional: startDate/endDate to filter offline players by lastSeen
+// Optional: loadAll=true to fetch ALL players (slow for large servers)
+// Optimization: Only fetches online players + recent offline players (not all 2000+)
 app.get('/api/players', requireAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
-  const { gameServerId } = req.query;
+  const { gameServerId, startDate, endDate, loadAll } = req.query;
 
   if (!gameServerId) {
     res.status(400).json({ error: 'gameServerId required' });
@@ -363,7 +366,16 @@ app.get('/api/players', requireAuth as express.RequestHandler, async (req: Authe
   }
 
   try {
-    const players = await req.session!.takaroClient.getPlayers(gameServerId as string);
+    // Pass date range and loadAll flag to Takaro client
+    // loadAll=true fetches all players via pagination (slow but complete)
+    // Otherwise fetches online players + filtered offline players (fast)
+    const players = await req.session!.takaroClient.getPlayers(
+      gameServerId as string,
+      startDate as string | undefined,
+      endDate as string | undefined,
+      loadAll === 'true'
+    );
+
     res.json({ data: players });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
@@ -445,6 +457,67 @@ async function enrichWithPlayerNames(
   }
 }
 
+// Cascading downsampling - more granular data as user narrows time range
+// Resolution increases progressively as time range shrinks:
+// - 7+ days:    5 minute intervals (coarse overview)
+// - 2-7 days:   2 minute intervals
+// - 12h-2 days: 1 minute intervals
+// - 3h-12h:     30 second intervals
+// - 1h-3h:      15 second intervals
+// - 15m-1h:     5 second intervals
+// - < 15m:      all points (full resolution)
+function downsamplePoints(
+  points: Array<{ x: number; y: number; z: number; timestamp: string }>,
+  durationMs: number
+): Array<{ x: number; y: number; z: number; timestamp: string }> {
+  if (points.length <= 2) return points;
+
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  // Cascading resolution based on time range
+  let intervalMs: number;
+  if (durationMs < 15 * MINUTE) {
+    return points; // Full resolution for < 15 minutes
+  } else if (durationMs < HOUR) {
+    intervalMs = 5 * 1000; // 5 seconds for 15m-1h
+  } else if (durationMs < 3 * HOUR) {
+    intervalMs = 15 * 1000; // 15 seconds for 1h-3h
+  } else if (durationMs < 12 * HOUR) {
+    intervalMs = 30 * 1000; // 30 seconds for 3h-12h
+  } else if (durationMs < 2 * DAY) {
+    intervalMs = MINUTE; // 1 minute for 12h-2 days
+  } else if (durationMs < 7 * DAY) {
+    intervalMs = 2 * MINUTE; // 2 minutes for 2-7 days
+  } else {
+    intervalMs = 5 * MINUTE; // 5 minutes for 7+ days
+  }
+
+  const result: Array<{ x: number; y: number; z: number; timestamp: string }> = [];
+  let lastTime = 0;
+
+  for (let i = 0; i < points.length; i++) {
+    const point = points[i];
+    const pointTime = new Date(point.timestamp).getTime();
+
+    // Always keep first and last points
+    if (i === 0 || i === points.length - 1) {
+      result.push(point);
+      lastTime = pointTime;
+      continue;
+    }
+
+    // Keep point if enough time has passed since last kept point
+    if (pointTime - lastTime >= intervalMs) {
+      result.push(point);
+      lastTime = pointTime;
+    }
+  }
+
+  return result;
+}
+
 // Get movement paths for all players on a game server (from Takaro tracking API)
 app.get(
   '/api/movement-paths',
@@ -492,9 +565,15 @@ app.get(
         });
       }
 
-      // Sort points by timestamp for each player
+      // Calculate time range duration for downsampling
+      const start = startDate ? new Date(startDate as string).getTime() : Date.now() - 24 * 60 * 60 * 1000;
+      const end = endDate ? new Date(endDate as string).getTime() : Date.now();
+      const durationMs = end - start;
+
+      // Sort and downsample points for each player
       for (const playerId in paths) {
         paths[playerId].points.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        paths[playerId].points = downsamplePoints(paths[playerId].points, durationMs);
       }
 
       res.json({ data: paths });
@@ -626,6 +705,58 @@ app.post(
       res.json({ data: enrichedResults });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+);
+
+// ============== PLAYER ADMIN ACTIONS ==============
+
+// Give item to player
+app.post(
+  '/api/player/:playerId/give-item',
+  requireAuth as express.RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { playerId } = req.params;
+    const { gameServerId, itemName, amount, quality } = req.body;
+
+    if (!gameServerId || !itemName || amount === undefined) {
+      res.status(400).json({ error: 'gameServerId, itemName, and amount are required' });
+      return;
+    }
+
+    try {
+      await req.session!.takaroClient.giveItem(
+        gameServerId as string,
+        playerId as string,
+        itemName as string,
+        amount as number,
+        (quality as string) || '1'
+      );
+      res.json({ success: true, message: `Gave ${amount}x ${itemName} to player` });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to give item' });
+    }
+  }
+);
+
+// Add currency to player
+app.post(
+  '/api/player/:playerId/add-currency',
+  requireAuth as express.RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { playerId } = req.params;
+    const { gameServerId, currency } = req.body;
+
+    if (!gameServerId || currency === undefined) {
+      res.status(400).json({ error: 'gameServerId and currency are required' });
+      return;
+    }
+
+    try {
+      await req.session!.takaroClient.addCurrency(gameServerId as string, playerId as string, currency as number);
+      res.json({ success: true, message: `Added ${currency} currency to player` });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to add currency' });
     }
   }
 );

@@ -1,12 +1,11 @@
 // Player marker management
 
-import type { InventoryItem, Player } from './types.js';
+import type { Player } from './types.js';
 
 declare const L: typeof import('leaflet');
 
 export const Players = {
   markers: new Map<string | number, L.Marker>(),
-  inventories: new Map<string, InventoryItem[]>(),
   allPlayers: [] as Player[],
   showOnline: true,
   showOffline: true,
@@ -49,56 +48,6 @@ export const Players = {
     return amount.toLocaleString();
   },
 
-  createInventoryTable(inventory: InventoryItem[] | undefined): string {
-    if (!inventory || !Array.isArray(inventory) || inventory.length === 0) {
-      return '<p class="inventory-empty">No inventory data available</p>';
-    }
-
-    // The Takaro API returns a flat array of items
-    // Group by timestamp to get the most recent snapshot
-    const byTimestamp: Record<string, InventoryItem[]> = {};
-    for (const item of inventory) {
-      const ts = item.createdAt || '';
-      if (!byTimestamp[ts]) byTimestamp[ts] = [];
-      byTimestamp[ts].push(item);
-    }
-
-    // Get the most recent timestamp's items
-    const timestamps = Object.keys(byTimestamp).sort().reverse();
-    if (timestamps.length === 0) {
-      return '<p class="inventory-empty">No items in inventory</p>';
-    }
-
-    const items = byTimestamp[timestamps[0]];
-
-    const rows = items
-      .map((item) => {
-        const quality =
-          item.quality && item.quality !== '-1' && item.quality !== null
-            ? `<span class="item-quality">Q${item.quality}</span>`
-            : '';
-        return `<tr>
-        <td class="item-name">${item.itemName || item.itemCode || 'Unknown'}${quality}</td>
-        <td class="item-count">${item.quantity || 1}</td>
-      </tr>`;
-      })
-      .join('');
-
-    return `
-      <div class="inventory-section">
-        <h5>Inventory (${items.length} items)</h5>
-        <div class="inventory-table-wrapper">
-          <table class="inventory-table">
-            <thead>
-              <tr><th>Item</th><th>Qty</th></tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  },
-
   createPopupContent(player: Player): string {
     const lastSeen = player.lastSeen ? new Date(player.lastSeen).toLocaleString() : 'Now';
 
@@ -107,12 +56,11 @@ export const Players = {
     const playtime = this.formatPlaytime(player.playtimeSeconds);
     const currency = this.formatCurrency(player.currency);
 
-    // Get inventory for this player (by ID)
-    const inventory = this.inventories.get(player.playerId);
-    const inventoryHtml = this.createInventoryTable(inventory);
+    // Generate unique ID for this popup instance
+    const popupId = `popup-${player.playerId || player.id}`;
 
     return `
-      <div class="player-popup">
+      <div class="player-popup" data-player-id="${player.playerId}" data-popup-id="${popupId}">
         <h4>${player.name}</h4>
         <p><strong>Position:</strong> X: ${Math.round(player.x!)}, Z: ${Math.round(player.z!)}</p>
         ${player.y !== null ? `<p><strong>Height:</strong> ${Math.round(player.y!)}</p>` : ''}
@@ -122,11 +70,62 @@ export const Players = {
           </span>
         </p>
         ${!player.online ? `<p><strong>Last seen:</strong> ${lastSeen}</p>` : ''}
-        ${currency !== null ? `<p><strong>Currency:</strong> ${currency}</p>` : ''}
+        ${currency !== null ? `<p><strong>Currency:</strong> <span class="popup-currency-display">${currency}</span></p>` : ''}
         ${playtime ? `<p><strong>Playtime:</strong> ${playtime}</p>` : ''}
         ${profileUrl ? `<p><a href="${profileUrl}" target="_blank" class="profile-link">View Takaro Profile</a></p>` : ''}
-        <button class="btn btn-sm load-inventory-btn" data-player-id="${player.playerId}">Load Inventory</button>
-        <div class="inventory-container" id="inventory-${player.playerId}">${inventoryHtml}</div>
+
+        <!-- Admin Actions Section -->
+        <div class="popup-actions">
+          <button type="button" class="btn btn-sm popup-toggle-actions" data-toggle="actions-${popupId}">
+            Admin Actions
+          </button>
+
+          <div id="actions-${popupId}" class="popup-actions-panel" style="display: none;">
+            <!-- Give Item Form -->
+            <div class="popup-action-section">
+              <h5>Give Item</h5>
+              <div class="popup-form">
+                <input type="text"
+                       class="popup-input popup-item-search"
+                       placeholder="Item name..."
+                       list="popup-items-${popupId}"
+                       data-popup-id="${popupId}" />
+                <datalist id="popup-items-${popupId}"></datalist>
+                <div class="popup-form-row">
+                  <div class="popup-field">
+                    <label>Amount</label>
+                    <input type="number"
+                           class="popup-input popup-item-amount"
+                           value="1"
+                           min="1" />
+                  </div>
+                  <div class="popup-field">
+                    <label>Quality (1-6)</label>
+                    <input type="text"
+                           class="popup-input popup-item-quality"
+                           value="1" />
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary popup-give-item">Give Item</button>
+              </div>
+            </div>
+
+            <!-- Add Currency Form -->
+            <div class="popup-action-section">
+              <h5>Add Currency</h5>
+              <div class="popup-form popup-form-inline">
+                <input type="number"
+                       class="popup-input popup-currency-amount"
+                       placeholder="Amount"
+                       min="1" />
+                <button type="button" class="btn btn-sm btn-primary popup-add-currency">Add</button>
+              </div>
+            </div>
+
+            <!-- Status Message -->
+            <div class="popup-status" id="status-${popupId}"></div>
+          </div>
+        </div>
       </div>
     `;
   },
@@ -137,24 +136,35 @@ export const Players = {
     this.gameServerId = gameServerId;
 
     try {
-      // Get all players from Takaro API (now returns both online and offline)
-      const players: Player[] = await window.API.getPlayers(gameServerId);
-
-      // Store for lookup by other modules (e.g., AreaSearch)
-      this.allPlayers = players;
-
-      const currentIds = new Set<string | number>();
-      let onlineCount = 0;
-      let offlineCount = 0;
-
-      // Get time range for filtering offline players
+      // Get time range for filtering - now passed to API for server-side filtering
+      let startIso: string | undefined;
+      let endIso: string | undefined;
       let startTime: number | null = null;
       let endTime: number | null = null;
       if (window.TimeRange) {
         const { start, end } = window.TimeRange.getDateRange();
+        startIso = start.toISOString();
+        endIso = end.toISOString();
         startTime = start.getTime();
         endTime = end.getTime();
       }
+
+      // Show loading indicator
+      const playerCountEl = document.getElementById('player-count');
+      if (playerCountEl) {
+        playerCountEl.textContent = 'Loading players...';
+      }
+
+      // Get players with server-side filtering by date range
+      const players: Player[] = await window.API.getPlayers(gameServerId, startIso, endIso);
+
+      // Store for lookup by other modules (e.g., AreaSearch)
+      this.allPlayers = players;
+
+      // Filter players for markers and count
+      const playersToRender: Array<{ player: Player; isOnline: boolean }> = [];
+      let onlineCount = 0;
+      let offlineCount = 0;
 
       for (const player of players) {
         const isOnline = player.online === 1 || player.online === true;
@@ -181,32 +191,67 @@ export const Players = {
           continue;
         }
 
-        currentIds.add(player.id);
-        const pos = window.GameMap.gameToLatLng(player.x, player.z);
+        playersToRender.push({ player, isOnline });
+      }
 
-        if (this.markers.has(player.id)) {
-          // Update existing marker
-          const marker = this.markers.get(player.id)!;
-          marker.setLatLng(pos);
-          marker.setIcon(this.createIcon(isOnline, player.playerId));
-          marker.getPopup()?.setContent(this.createPopupContent(player));
-        } else {
-          // Create new marker
-          const marker = L.marker(pos, {
-            icon: this.createIcon(isOnline, player.playerId),
-          });
+      // Update status immediately so user sees progress
+      if (playerCountEl) {
+        playerCountEl.textContent = `Players: ${onlineCount} online, ${offlineCount} offline`;
+      }
 
-          marker.bindPopup(this.createPopupContent(player));
+      // Sync with player list panel early (non-blocking for marker creation)
+      if (window.PlayerList) {
+        const needsRefresh = !window.PlayerList.hasInitializedSelection;
+        // Defer PlayerList update slightly to not block marker rendering
+        setTimeout(() => {
+          window.PlayerList.updatePlayers(players);
+          if (needsRefresh && window.PlayerList.selectedPlayers.size > 0) {
+            this.selectedPlayers = window.PlayerList.selectedPlayers;
+            this.refreshVisibility();
+          }
+        }, 0);
+      }
 
-          // Add click handler to show player info panel
-          marker.on('click', () => {
-            if (window.PlayerInfo) {
-              window.PlayerInfo.showPlayer(player.playerId || player.id);
-            }
-          });
+      // Process markers in batches to avoid blocking UI
+      const BATCH_SIZE = 50;
+      const currentIds = new Set<string | number>();
 
-          marker.addTo(window.GameMap.map!);
-          this.markers.set(player.id, marker);
+      for (let i = 0; i < playersToRender.length; i += BATCH_SIZE) {
+        const batch = playersToRender.slice(i, i + BATCH_SIZE);
+
+        for (const { player, isOnline } of batch) {
+          currentIds.add(player.id);
+          const pos = window.GameMap.gameToLatLng(player.x!, player.z!);
+
+          if (this.markers.has(player.id)) {
+            // Update existing marker
+            const marker = this.markers.get(player.id)!;
+            marker.setLatLng(pos);
+            marker.setIcon(this.createIcon(isOnline, player.playerId));
+            marker.getPopup()?.setContent(this.createPopupContent(player));
+          } else {
+            // Create new marker
+            const marker = L.marker(pos, {
+              icon: this.createIcon(isOnline, player.playerId),
+            });
+
+            marker.bindPopup(this.createPopupContent(player));
+
+            // Add click handler to show player info panel
+            marker.on('click', () => {
+              if (window.PlayerInfo) {
+                window.PlayerInfo.showPlayer(player.playerId || player.id);
+              }
+            });
+
+            marker.addTo(window.GameMap.map!);
+            this.markers.set(player.id, marker);
+          }
+        }
+
+        // Yield to browser between batches (allows UI to update/respond)
+        if (i + BATCH_SIZE < playersToRender.length) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
       }
 
@@ -218,46 +263,13 @@ export const Players = {
         }
       }
 
-      // Update status
-      const playerCountEl = document.getElementById('player-count');
-      if (playerCountEl) {
-        playerCountEl.textContent = `Players: ${onlineCount} online, ${offlineCount} offline`;
-      }
+      // Update last update time
       const lastUpdateEl = document.getElementById('last-update');
       if (lastUpdateEl) {
         lastUpdateEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
       }
-
-      // Sync with player list panel
-      if (window.PlayerList) {
-        const needsRefresh = !window.PlayerList.hasInitializedSelection;
-        window.PlayerList.updatePlayers(players);
-        // If this was the first initialization, refresh visibility with the new selection
-        if (needsRefresh && window.PlayerList.selectedPlayers.size > 0) {
-          this.selectedPlayers = window.PlayerList.selectedPlayers;
-          this.refreshVisibility();
-        }
-      }
     } catch (error) {
       console.error('Failed to update players:', error);
-    }
-  },
-
-  async loadPlayerInventory(playerId: string): Promise<InventoryItem[] | null> {
-    try {
-      const inventory = await window.API.getPlayerInventory(playerId);
-      this.inventories.set(playerId, inventory);
-
-      // Update the inventory container in the popup if it exists
-      const container = document.getElementById(`inventory-${playerId}`);
-      if (container) {
-        container.innerHTML = this.createInventoryTable(inventory);
-      }
-
-      return inventory;
-    } catch (error) {
-      console.warn('Failed to fetch inventory for player:', playerId, (error as Error).message);
-      return null;
     }
   },
 
@@ -348,10 +360,11 @@ export const Players = {
   startAutoRefresh(gameServerId: string, intervalMs: number = 30000): void {
     this.stopAutoRefresh();
 
-    // Initial update
+    // Initial update - don't block, let it run in background
+    // This allows the map to be visible immediately while players load
     this.update(gameServerId);
 
-    // Set up interval
+    // Set up interval for subsequent updates
     this.refreshInterval = setInterval(() => {
       this.update(gameServerId);
     }, intervalMs);
@@ -364,6 +377,63 @@ export const Players = {
     }
   },
 
+  // Load ALL players (slow for large servers, but complete)
+  async loadAllPlayers(): Promise<void> {
+    if (!this.gameServerId || !window.GameMap.map) return;
+
+    const btn = document.getElementById('load-all-players-btn') as HTMLButtonElement | null;
+    const playerCountEl = document.getElementById('player-count');
+
+    try {
+      // Update UI to show loading
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+      }
+      if (playerCountEl) {
+        playerCountEl.textContent = 'Loading all players (this may take a while)...';
+      }
+
+      // Fetch ALL players
+      const players: Player[] = await window.API.getPlayers(this.gameServerId, undefined, undefined, true);
+
+      // Store for lookup by other modules
+      this.allPlayers = players;
+
+      // Count players
+      let onlineCount = 0;
+      let offlineCount = 0;
+      for (const player of players) {
+        if (player.online === 1 || player.online === true) onlineCount++;
+        else offlineCount++;
+      }
+
+      // Update status
+      if (playerCountEl) {
+        playerCountEl.textContent = `Players: ${onlineCount} online, ${offlineCount} offline (ALL loaded)`;
+      }
+
+      // Sync with player list panel
+      if (window.PlayerList) {
+        window.PlayerList.updatePlayers(players);
+      }
+
+      // Refresh map markers
+      this.refreshVisibility();
+
+    } catch (error) {
+      console.error('Failed to load all players:', error);
+      if (playerCountEl) {
+        playerCountEl.textContent = 'Failed to load all players';
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Load All';
+      }
+    }
+  },
+
   clear(): void {
     this.stopAutoRefresh();
 
@@ -371,30 +441,186 @@ export const Players = {
       marker.remove();
     }
     this.markers.clear();
-    this.inventories.clear();
 
     if (window.PlayerList) {
       window.PlayerList.clear();
     }
   },
-};
 
-// Handle inventory load button clicks (delegated event)
-document.addEventListener('click', async (e: MouseEvent) => {
-  const target = e.target as HTMLElement;
-  if (target.classList.contains('load-inventory-btn')) {
-    const playerId = target.dataset.playerId;
+  // Set up event delegation for popup interactions
+  setupPopupEventDelegation(): void {
+    const mapContainer = document.getElementById('map');
+    if (!mapContainer) return;
 
-    if (playerId) {
-      (target as HTMLButtonElement).disabled = true;
-      target.textContent = 'Loading...';
+    // Debounce timer for item search
+    let searchTimeout: ReturnType<typeof setTimeout>;
 
-      await Players.loadPlayerInventory(playerId);
+    // Handle click events
+    mapContainer.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
 
-      target.textContent = 'Refresh Inventory';
-      (target as HTMLButtonElement).disabled = false;
+      // Handle toggle actions button
+      if (target.classList.contains('popup-toggle-actions')) {
+        const panelId = target.dataset.toggle;
+        if (panelId) {
+          const panel = document.getElementById(panelId);
+          if (panel) {
+            const isHidden = panel.style.display === 'none';
+            panel.style.display = isHidden ? 'block' : 'none';
+            target.textContent = isHidden ? 'Hide Actions' : 'Admin Actions';
+          }
+        }
+        return;
+      }
+
+      // Handle Give Item button
+      if (target.classList.contains('popup-give-item')) {
+        const popup = target.closest('.player-popup') as HTMLElement;
+        if (!popup) return;
+
+        const playerId = popup.dataset.playerId;
+        const popupId = popup.dataset.popupId;
+        const itemInput = popup.querySelector('.popup-item-search') as HTMLInputElement;
+        const amountInput = popup.querySelector('.popup-item-amount') as HTMLInputElement;
+        const qualityInput = popup.querySelector('.popup-item-quality') as HTMLInputElement;
+
+        if (!playerId || !itemInput?.value || !amountInput?.value) {
+          this.showPopupStatus(popupId!, 'Please fill in item name and amount', 'error');
+          return;
+        }
+
+        const btn = target as HTMLButtonElement;
+        try {
+          btn.disabled = true;
+          btn.textContent = 'Giving...';
+
+          await window.API.giveItem(
+            this.gameServerId!,
+            playerId,
+            itemInput.value,
+            parseInt(amountInput.value, 10),
+            qualityInput?.value || '1'
+          );
+
+          this.showPopupStatus(popupId!, `Gave ${amountInput.value}x ${itemInput.value}`, 'success');
+          itemInput.value = '';
+          amountInput.value = '1';
+        } catch (error) {
+          this.showPopupStatus(popupId!, error instanceof Error ? error.message : 'Failed', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Give Item';
+        }
+        return;
+      }
+
+      // Handle Add Currency button
+      if (target.classList.contains('popup-add-currency')) {
+        const popup = target.closest('.player-popup') as HTMLElement;
+        if (!popup) return;
+
+        const playerId = popup.dataset.playerId;
+        const popupId = popup.dataset.popupId;
+        const currencyInput = popup.querySelector('.popup-currency-amount') as HTMLInputElement;
+
+        if (!playerId || !currencyInput?.value) {
+          this.showPopupStatus(popupId!, 'Please enter a currency amount', 'error');
+          return;
+        }
+
+        const btn = target as HTMLButtonElement;
+        try {
+          btn.disabled = true;
+          btn.textContent = 'Adding...';
+
+          const amount = parseInt(currencyInput.value, 10);
+          await window.API.addCurrency(this.gameServerId!, playerId, amount);
+
+          this.showPopupStatus(popupId!, `Added ${amount} currency`, 'success');
+          currencyInput.value = '';
+
+          // Update currency display in popup
+          const currencyDisplay = popup.querySelector('.popup-currency-display');
+          if (currencyDisplay) {
+            const currentCurrency = parseInt(currencyDisplay.textContent?.replace(/,/g, '') || '0', 10);
+            currencyDisplay.textContent = (currentCurrency + amount).toLocaleString();
+          }
+
+          // Refresh player data
+          if (this.gameServerId) {
+            this.update(this.gameServerId);
+          }
+        } catch (error) {
+          this.showPopupStatus(popupId!, error instanceof Error ? error.message : 'Failed', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Add';
+        }
+        return;
+      }
+    });
+
+    // Handle item search input with debounce
+    mapContainer.addEventListener('input', (e) => {
+      const target = e.target as HTMLInputElement;
+
+      if (target.classList.contains('popup-item-search')) {
+        clearTimeout(searchTimeout);
+        const query = target.value.trim();
+        const popupId = target.dataset.popupId;
+
+        if (query.length >= 2 && popupId && this.gameServerId) {
+          searchTimeout = setTimeout(async () => {
+            try {
+              const items = await window.API.getItems(this.gameServerId!, query);
+              const datalist = document.getElementById(`popup-items-${popupId}`);
+              if (datalist) {
+                datalist.innerHTML = items
+                  .slice(0, 20)
+                  .map((item) => `<option value="${item.name}">`)
+                  .join('');
+              }
+            } catch (error) {
+              console.error('Failed to fetch items:', error);
+            }
+          }, 300);
+        }
+      }
+    });
+  },
+
+  // Show status message in popup
+  showPopupStatus(popupId: string, message: string, type: 'success' | 'error'): void {
+    const statusEl = document.getElementById(`status-${popupId}`);
+    if (statusEl) {
+      statusEl.textContent = message;
+      statusEl.className = `popup-status popup-status-${type}`;
+
+      // Auto-clear after 3 seconds
+      setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'popup-status';
+      }, 3000);
     }
-  }
-});
+  },
+
+  // Focus on a player marker on the map
+  focusPlayer(playerId: string): void {
+    const player = this.allPlayers.find(
+      (p) => String(p.playerId) === String(playerId) || String(p.id) === String(playerId)
+    );
+
+    if (player && player.x !== null && player.z !== null && window.GameMap.map) {
+      const pos = window.GameMap.gameToLatLng(player.x, player.z);
+      window.GameMap.map.setView(pos, window.GameMap.map.getZoom());
+
+      // Open the popup
+      const marker = this.markers.get(player.id);
+      if (marker) {
+        marker.openPopup();
+      }
+    }
+  },
+};
 
 window.Players = Players;

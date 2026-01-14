@@ -5,7 +5,7 @@ export const TTL = {
   GAME_SERVERS: 15 * 60, // 15 minutes
   MAP_INFO: 60 * 60, // 1 hour
   PLAYER_NAMES: 5 * 60, // 5 minutes
-  PLAYERS_LIST: 60, // 60 seconds (longer to account for slow fetches)
+  PLAYERS_LIST: 20, // 20 seconds (shorter for faster online player detection)
   MOVEMENT_PATHS: 5 * 60, // 5 minutes
   DEATH_EVENTS: 10 * 60, // 10 minutes
   AREA_SEARCH: 2 * 60, // 2 minutes

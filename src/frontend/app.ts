@@ -98,6 +98,14 @@ export const App: AppModule = {
       });
     }
 
+    // Load All Players button (in player list panel)
+    const loadAllBtn = document.getElementById('load-all-players-btn');
+    if (loadAllBtn) {
+      loadAllBtn.addEventListener('click', async () => {
+        await window.Players.loadAllPlayers();
+      });
+    }
+
     // Playback controls
     const playbackBtn = document.getElementById('playback-btn');
     if (playbackBtn) {
@@ -132,14 +140,6 @@ export const App: AppModule = {
     if (closePlaybackBtn) {
       closePlaybackBtn.addEventListener('click', () => {
         window.History.stopPlayback();
-      });
-    }
-
-    // Settings button (placeholder for future settings modal)
-    const settingsBtn = document.getElementById('settings-btn');
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', () => {
-        alert('Settings coming soon!');
       });
     }
 
@@ -204,29 +204,9 @@ export const App: AppModule = {
 
     // Initialize area search after map is ready with callback
     window.AreaSearch.init(window.GameMap.map!, gameServerId, async (results: AreaSearchResult[]) => {
-      if (results.length > 0) {
-        // Get unique player IDs
-        const playerIds = [...new Set(results.map((r) => r.playerId).filter(Boolean))] as string[];
-
-        if (playerIds.length > 0 && window.PlayerList) {
-          // Filter player list to show only found players
-          window.PlayerList.setAreaFilter(playerIds);
-          // Also select them
-          window.PlayerList.selectOnly(playerIds);
-        }
-
-        // Load paths if checkbox is checked
-        const showPathsCheckbox = document.getElementById('show-paths') as HTMLInputElement | null;
-        if (showPathsCheckbox?.checked) {
-          const { start, end } = window.TimeRange.getDateRange();
-          await window.History.loadPaths(this.gameServerId!, start, end);
-          window.History.drawPaths();
-        }
-      } else {
-        // No results - clear any existing filter
-        if (window.PlayerList) {
-          window.PlayerList.clearAreaFilter();
-        }
+      // Show results in the Area Search tab in the bottom panel
+      if (window.PlayerInfo) {
+        window.PlayerInfo.showAreaSearchResults(results);
       }
     });
 
@@ -235,13 +215,16 @@ export const App: AppModule = {
       window.Heatmap.init(gameServerId);
     }
 
-    // Load items for autocomplete (in Item Search tab)
+    // Set game server ID for PlayerInfo (items loaded lazily when Item Search tab opened)
     if (window.PlayerInfo) {
-      window.PlayerInfo.loadItems(gameServerId);
+      window.PlayerInfo.gameServerId = gameServerId;
     }
 
     // Start player marker updates - fetch from API directly
     window.Players.startAutoRefresh(gameServerId, 30000);
+
+    // Set up event delegation for popup interactions (give item, add currency)
+    window.Players.setupPopupEventDelegation();
   },
 
   cleanup(): void {

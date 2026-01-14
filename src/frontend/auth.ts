@@ -7,6 +7,7 @@ export const Auth = {
   serviceMode: true,
   cookieMode: false,
   availableDomains: [] as Array<{ id: string; name: string }>,
+  currentDomain: null as string | null,
   dashboardUrl: 'https://dashboard.takaro.io',
   servers: undefined as GameServer[] | undefined,
   selectedServer: undefined as GameServer | undefined,
@@ -29,8 +30,11 @@ export const Auth = {
           }
           if (status.domain) {
             window.API.setDomain(status.domain);
+            this.currentDomain = status.domain;
           }
           this.showLoggedInState('Service Mode');
+          // Initialize domain switcher (will be hidden in service mode)
+          window.DomainSwitcher.init([], this.currentDomain, true);
         } else {
           // Cookie mode - already authenticated via cookies
           this.availableDomains = status.availableDomains || [];
@@ -43,8 +47,11 @@ export const Auth = {
 
           if (status.domain) {
             window.API.setDomain(status.domain);
+            this.currentDomain = status.domain;
           }
           this.showLoggedInState('Cookie Mode');
+          // Initialize domain switcher for cookie mode
+          window.DomainSwitcher.init(this.availableDomains, this.currentDomain, false);
         }
 
         await this.loadGameServers();

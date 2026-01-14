@@ -15,8 +15,8 @@
       <h1>Takaro 7D2D Player Map</h1>
       <div class="header-controls">
         <span id="app-version" class="app-version"></span>
+        <select id="domain-selector" class="domain-selector" style="display: none;"></select>
         <span id="connection-status" class="status-indicator offline">Disconnected</span>
-        <button id="settings-btn" class="btn btn-icon" title="Settings">&#9881;</button>
       </div>
     </header>
 
@@ -146,6 +146,7 @@
           <div class="bottom-panel-tabs">
             <button class="top-tab-btn active" data-top-tab="player-info">Player Info</button>
             <button class="top-tab-btn" data-top-tab="item-search">Item Search</button>
+            <button class="top-tab-btn" data-top-tab="area-search">Area Search</button>
           </div>
           <div class="bottom-panel-actions">
             <button id="expand-bottom-panel" class="btn btn-icon" title="Expand panel">
@@ -227,6 +228,19 @@
               </div>
             </div>
           </div>
+
+          <!-- Area Search Tab -->
+          <div id="top-tab-area-search" class="top-tab-pane">
+            <div class="area-search-tab-content">
+              <div class="area-search-header">
+                <span id="area-search-count">Draw a rectangle or circle on the map to search</span>
+                <button id="clear-area-search" class="btn btn-sm" style="display: none;">Clear</button>
+              </div>
+              <div id="area-search-results-list" class="area-search-results">
+                <div class="area-search-empty">Use the rectangle or circle tools above the map to select an area and find players who were there.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -244,6 +258,7 @@
             <div class="player-selection-controls">
               <button id="select-all-btn" class="btn btn-sm">Select All</button>
               <button id="deselect-all-btn" class="btn btn-sm">Deselect All</button>
+              <button id="load-all-players-btn" class="btn btn-sm" title="Load all players (slow for large servers)">Load All</button>
             </div>
             <div class="player-list-stats">
               <span id="panel-selected-count">0 selected</span>

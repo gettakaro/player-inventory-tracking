@@ -1,6 +1,6 @@
 // Player Info Panel - Shows detailed player information with inventory timeline
 
-import type { DateRange, InventoryItem, Item, ItemSearchResult, Player } from './types.js';
+import type { AreaSearchResult, DateRange, InventoryItem, Item, ItemSearchResult, Player } from './types.js';
 
 interface InventoryDiff {
   added: DiffItem[];
@@ -36,6 +36,15 @@ interface CurrentItemSearch {
   itemName: string;
 }
 
+interface TrendInfo {
+  direction: 'up' | 'down' | 'stable';
+  netChange: number;
+  percentChange: number;
+  firstQuantity: number;
+  latestQuantity: number;
+  dataPoints: number;
+}
+
 interface PlayerInfoModule {
   selectedPlayerId: string | null;
   selectedPlayer: Player | null;
@@ -45,6 +54,7 @@ interface PlayerInfoModule {
   itemSearchResults: ItemSearchResult[];
   currentItemSearch: CurrentItemSearch | null;
   items: Item[];
+  itemsLoaded: boolean;
   gameServerId: string | null;
   ICON_BASE_URL: string;
 
@@ -78,6 +88,10 @@ interface PlayerInfoModule {
   renderItemSearchResults(itemName: string, results: ItemSearchResult[]): void;
   formatRelativeTime(timestamp: string): string;
   attachInventoryClickHandlers(): void;
+  calculateItemTrend(entries: InventoryEntry[]): TrendInfo;
+  renderTrendIndicator(trend: TrendInfo): string;
+  showAreaSearchResults(results: AreaSearchResult[]): void;
+  clearAreaSearchResults(): void;
 }
 
 const PlayerInfo: PlayerInfoModule = {
@@ -89,6 +103,7 @@ const PlayerInfo: PlayerInfoModule = {
   itemSearchResults: [], // Results from item search
   currentItemSearch: null, // Current item being searched
   items: [], // Cached items for autocomplete
+  itemsLoaded: false, // Whether items have been loaded (lazy loading)
   gameServerId: null, // Current game server
 
   // Base URL for 7DTD item icons from CSMM repository
@@ -238,6 +253,11 @@ const PlayerInfo: PlayerInfoModule = {
     const panel = document.getElementById('bottom-panel');
     if (panel) {
       panel.style.display = 'flex';
+    }
+
+    // Lazy load items when switching to Item Search tab
+    if (tabId === 'item-search' && !this.itemsLoaded && this.gameServerId) {
+      this.loadItems(this.gameServerId);
     }
   },
 
@@ -831,6 +851,7 @@ const PlayerInfo: PlayerInfoModule = {
     this.gameServerId = gameServerId;
     try {
       this.items = await window.API.getItems(gameServerId);
+      this.itemsLoaded = true;
       console.log(`[PlayerInfo] Loaded ${this.items.length} items for autocomplete`);
     } catch (error) {
       console.error('[PlayerInfo] Failed to load items:', error);
@@ -1060,6 +1081,10 @@ const PlayerInfo: PlayerInfoModule = {
     // Render player cards
     const html = sortedPlayers
       .map((player) => {
+        // Calculate trend for this player
+        const trend = this.calculateItemTrend(player.entries);
+        const trendHtml = this.renderTrendIndicator(trend);
+
         const entriesHtml = player.entries
           .slice(0, 5)
           .map((entry) => {
@@ -1074,7 +1099,10 @@ const PlayerInfo: PlayerInfoModule = {
 
         return `
         <div class="item-player-card" data-player-id="${player.playerId}">
-          <div class="item-player-name">${this.escapeHtml(player.playerName)}</div>
+          <div class="item-player-header">
+            <span class="item-player-name">${this.escapeHtml(player.playerName)}</span>
+            ${trendHtml}
+          </div>
           <div class="item-player-entries">
             ${entriesHtml}
             ${moreCount}
@@ -1147,6 +1175,240 @@ const PlayerInfo: PlayerInfoModule = {
         }
       });
     });
+  },
+
+  calculateItemTrend(entries: InventoryEntry[]): TrendInfo {
+    if (entries.length === 0) {
+      return {
+        direction: 'stable',
+        netChange: 0,
+        percentChange: 0,
+        firstQuantity: 0,
+        latestQuantity: 0,
+        dataPoints: 0,
+      };
+    }
+
+    if (entries.length === 1) {
+      const qty = entries[0].quantity;
+      return {
+        direction: 'stable',
+        netChange: 0,
+        percentChange: 0,
+        firstQuantity: qty,
+        latestQuantity: qty,
+        dataPoints: 1,
+      };
+    }
+
+    // Entries are sorted most recent first
+    const latestQuantity = entries[0].quantity;
+    const firstQuantity = entries[entries.length - 1].quantity;
+    const netChange = latestQuantity - firstQuantity;
+
+    // Calculate percentage change (avoid division by zero)
+    const percentChange = firstQuantity > 0 ? (netChange / firstQuantity) * 100 : netChange > 0 ? 100 : 0;
+
+    // Determine direction with thresholds to avoid noise
+    const PERCENT_THRESHOLD = 10;
+    const ABSOLUTE_THRESHOLD = 2;
+
+    let direction: 'up' | 'down' | 'stable';
+    if (Math.abs(netChange) < ABSOLUTE_THRESHOLD && Math.abs(percentChange) < PERCENT_THRESHOLD) {
+      direction = 'stable';
+    } else if (netChange > 0) {
+      direction = 'up';
+    } else {
+      direction = 'down';
+    }
+
+    return {
+      direction,
+      netChange,
+      percentChange: Math.round(percentChange),
+      firstQuantity,
+      latestQuantity,
+      dataPoints: entries.length,
+    };
+  },
+
+  renderTrendIndicator(trend: TrendInfo): string {
+    // Don't show trend for insufficient data
+    if (trend.dataPoints < 2) {
+      return '';
+    }
+
+    const directionClass = `trend-${trend.direction}`;
+    const arrow = trend.direction === 'up' ? '&#9650;' : trend.direction === 'down' ? '&#9660;' : '&#8211;';
+
+    const changeText = trend.netChange > 0 ? `+${trend.netChange}` : trend.netChange < 0 ? `${trend.netChange}` : '';
+
+    const tooltip = `First: x${trend.firstQuantity}, Now: x${trend.latestQuantity} (${trend.percentChange > 0 ? '+' : ''}${trend.percentChange}%)`;
+
+    return `
+      <span class="trend-indicator ${directionClass}" title="${this.escapeHtml(tooltip)}">
+        <span class="trend-arrow">${arrow}</span>
+        ${changeText ? `<span class="trend-change">${changeText}</span>` : ''}
+      </span>
+    `;
+  },
+
+  // Show area search results in the Area Search tab
+  showAreaSearchResults(results: AreaSearchResult[]): void {
+    const resultsContainer = document.getElementById('area-search-results-list');
+    const countEl = document.getElementById('area-search-count');
+    const clearBtn = document.getElementById('clear-area-search');
+
+    if (!resultsContainer) return;
+
+    // Show the bottom panel and switch to Area Search tab
+    const panel = document.getElementById('bottom-panel');
+    if (panel) {
+      panel.style.display = 'flex';
+    }
+    this.switchTopTab('area-search');
+
+    if (!results || results.length === 0) {
+      if (countEl) countEl.textContent = 'No players found in this area';
+      if (clearBtn) clearBtn.style.display = 'none';
+      resultsContainer.innerHTML =
+        '<div class="area-search-empty">No players found in this area during the selected time range.</div>';
+      return;
+    }
+
+    // Aggregate results by player
+    interface PlayerAreaData {
+      playerId: string;
+      playerName: string;
+      recordCount: number;
+      firstSeen: Date;
+      lastSeen: Date;
+    }
+
+    const byPlayer: Record<string, PlayerAreaData> = {};
+    for (const result of results) {
+      const playerId = result.playerId;
+      if (!byPlayer[playerId]) {
+        byPlayer[playerId] = {
+          playerId,
+          playerName: result.playerName || 'Unknown',
+          recordCount: 0,
+          firstSeen: new Date(result.createdAt || Date.now()),
+          lastSeen: new Date(result.createdAt || Date.now()),
+        };
+      }
+      byPlayer[playerId].recordCount++;
+
+      const timestamp = new Date(result.createdAt || Date.now());
+      if (timestamp < byPlayer[playerId].firstSeen) {
+        byPlayer[playerId].firstSeen = timestamp;
+      }
+      if (timestamp > byPlayer[playerId].lastSeen) {
+        byPlayer[playerId].lastSeen = timestamp;
+      }
+    }
+
+    const players = Object.values(byPlayer);
+
+    // Sort by record count (most evidence first)
+    players.sort((a, b) => b.recordCount - a.recordCount);
+
+    // Update count display
+    const uniqueCount = players.length;
+    if (countEl) {
+      countEl.textContent = `${uniqueCount} player${uniqueCount !== 1 ? 's' : ''} found (${results.length} records)`;
+    }
+    if (clearBtn) {
+      clearBtn.style.display = 'inline-block';
+    }
+
+    // Format time range for display
+    const formatTime = (date: Date): string => {
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    };
+
+    // Render player rows
+    const html = players
+      .map((player) => {
+        const timeRange =
+          player.firstSeen.getTime() === player.lastSeen.getTime()
+            ? formatTime(player.firstSeen)
+            : `${formatTime(player.firstSeen)} - ${formatTime(player.lastSeen)}`;
+
+        return `
+        <div class="area-search-player-row" data-player-id="${player.playerId}">
+          <span class="area-search-player-name">${this.escapeHtml(player.playerName)}</span>
+          <span class="area-search-record-count">${player.recordCount} record${player.recordCount !== 1 ? 's' : ''}</span>
+          <span class="area-search-time-range">${timeRange}</span>
+        </div>
+      `;
+      })
+      .join('');
+
+    resultsContainer.innerHTML = html;
+
+    // Attach click handlers - clicking loads path and shows player info
+    resultsContainer.querySelectorAll('.area-search-player-row').forEach((row) => {
+      row.addEventListener('click', async () => {
+        const rowEl = row as HTMLElement;
+        const playerId = rowEl.dataset.playerId;
+
+        if (!playerId) return;
+
+        // Load the player's movement path
+        if (window.History && window.History.loadSinglePlayerPath) {
+          const { start, end }: DateRange = window.TimeRange
+            ? window.TimeRange.getDateRange()
+            : { start: new Date(Date.now() - 24 * 60 * 60 * 1000), end: new Date() };
+          await window.History.loadSinglePlayerPath(playerId, start.toISOString(), end.toISOString());
+        }
+
+        // Show the player info in the Player Info tab
+        await this.showPlayer(playerId);
+
+        // Focus on the player in the map
+        if (window.Players && window.Players.focusPlayer) {
+          window.Players.focusPlayer(playerId);
+        }
+      });
+    });
+
+    // Attach clear button handler
+    if (clearBtn) {
+      // Remove existing listener to avoid duplicates
+      const newClearBtn = clearBtn.cloneNode(true) as HTMLElement;
+      clearBtn.parentNode?.replaceChild(newClearBtn, clearBtn);
+      newClearBtn.addEventListener('click', () => this.clearAreaSearchResults());
+    }
+  },
+
+  // Clear area search results
+  clearAreaSearchResults(): void {
+    const resultsContainer = document.getElementById('area-search-results-list');
+    const countEl = document.getElementById('area-search-count');
+    const clearBtn = document.getElementById('clear-area-search');
+
+    if (countEl) {
+      countEl.textContent = 'Draw a rectangle or circle on the map to search';
+    }
+    if (clearBtn) {
+      clearBtn.style.display = 'none';
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML =
+        '<div class="area-search-empty">Use the rectangle or circle tools above the map to select an area and find players who were there.</div>';
+    }
+
+    // Also clear the area shape from the map
+    if (window.AreaSearch && window.AreaSearch.clear) {
+      window.AreaSearch.clear();
+    }
   },
 };
 

@@ -877,6 +877,10 @@ body {
   padding: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dark);
 }
 
 .player-list-header h3 {
@@ -885,25 +889,6 @@ body {
   color: var(--primary);
 }
 
-/* Top Player Search (in header controls) */
-.top-player-search {
-  padding: 0.4rem 0.75rem;
-  background: var(--darker);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  color: var(--light);
-  font-size: 0.85rem;
-  width: 180px;
-}
-
-.top-player-search:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-.top-player-search::placeholder {
-  color: var(--gray);
-}
 
 .player-search {
   width: 100%;

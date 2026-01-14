@@ -51,6 +51,7 @@ interface PlayerInfoModule {
   init(): void;
   setupEventListeners(): void;
   toggleExpand(): void;
+  openItemSearch(): void;
   switchTopTab(tabId: string): void;
   switchSubTab(tabId: string): void;
   showPlayer(playerId: string): Promise<void>;
@@ -109,6 +110,12 @@ const PlayerInfo: PlayerInfoModule = {
     const expandBtn = document.getElementById('expand-bottom-panel');
     if (expandBtn) {
       expandBtn.addEventListener('click', () => this.toggleExpand());
+    }
+
+    // Item search button in top toolbar
+    const itemSearchBtn = document.getElementById('item-search-btn');
+    if (itemSearchBtn) {
+      itemSearchBtn.addEventListener('click', () => this.openItemSearch());
     }
 
     // Top-level tab switching (Player Info / Item Search)
@@ -201,6 +208,16 @@ const PlayerInfo: PlayerInfoModule = {
     // Update button title
     if (expandBtn) {
       expandBtn.title = this.isExpanded ? 'Restore panel' : 'Expand panel';
+    }
+  },
+
+  // Open bottom panel with Item Search tab active
+  openItemSearch(): void {
+    this.switchTopTab('item-search');
+    // Focus the search input
+    const itemSearchInput = document.getElementById('item-search') as HTMLInputElement | null;
+    if (itemSearchInput) {
+      itemSearchInput.focus();
     }
   },
 

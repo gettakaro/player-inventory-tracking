@@ -83,28 +83,8 @@ const PlayerList: PlayerListModule = {
     document.getElementById('player-search')?.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
       this.searchTerm = target.value.toLowerCase().trim();
-      // Sync with top search bar
-      const topSearch = document.getElementById('top-player-search') as HTMLInputElement | null;
-      if (topSearch && topSearch.value !== target.value) {
-        topSearch.value = target.value;
-      }
       this.render();
     });
-
-    // Top search input (in controls bar)
-    const topSearch = document.getElementById('top-player-search');
-    if (topSearch) {
-      topSearch.addEventListener('input', (e) => {
-        const target = e.target as HTMLInputElement;
-        this.searchTerm = target.value.toLowerCase().trim();
-        // Sync with sidebar search
-        const sidebarSearch = document.getElementById('player-search') as HTMLInputElement | null;
-        if (sidebarSearch && sidebarSearch.value !== target.value) {
-          sidebarSearch.value = target.value;
-        }
-        this.render();
-      });
-    }
 
     // Select All / Deselect All buttons and Group checkboxes using event delegation
     const panel = document.getElementById('player-list-panel');
@@ -452,10 +432,6 @@ const PlayerList: PlayerListModule = {
     const searchInput = document.getElementById('player-search') as HTMLInputElement | null;
     if (searchInput) {
       searchInput.value = '';
-    }
-    const topSearchInput = document.getElementById('top-player-search') as HTMLInputElement | null;
-    if (topSearchInput) {
-      topSearchInput.value = '';
     }
     this.updateFilterIndicator();
     this.render();

@@ -1,5 +1,22 @@
 # Claude Code Instructions
 
+## Versioning
+
+When pushing to main, bump the version in `package.json` using semantic versioning:
+
+```bash
+npm version patch  # Bug fixes, small changes (1.0.0 -> 1.0.1)
+npm version minor  # New features, non-breaking changes (1.0.0 -> 1.1.0)
+npm version major  # Breaking changes (1.0.0 -> 2.0.0)
+```
+
+### When to use each:
+- **patch**: Bug fixes, linting fixes, typos, small refactors
+- **minor**: New features, UI improvements, new API endpoints
+- **major**: Breaking API changes, major architecture changes, incompatible updates
+
+Always run `npm version <type>` before pushing. This automatically updates `package.json` and creates a git tag.
+
 ## Git Worktrees for Parallel Development
 
 When working on a new feature, consider using a git worktree. This allows multiple AI agent sessions to work on different features simultaneously without conflicts.

@@ -330,7 +330,7 @@ export const Players = {
       if (shouldShow) {
         if (existingMarker) {
           // Show existing marker
-          if (!window.GameMap.map!.hasLayer(existingMarker)) {
+          if (!window.GameMap.map?.hasLayer(existingMarker)) {
             existingMarker.addTo(window.GameMap.map!);
           }
         } else {
@@ -350,7 +350,7 @@ export const Players = {
         }
       } else {
         // Hide marker if it exists
-        if (existingMarker && window.GameMap.map!.hasLayer(existingMarker)) {
+        if (existingMarker && window.GameMap.map?.hasLayer(existingMarker)) {
           existingMarker.remove();
         }
       }
@@ -420,7 +420,6 @@ export const Players = {
 
       // Refresh map markers
       this.refreshVisibility();
-
     } catch (error) {
       console.error('Failed to load all players:', error);
       if (playerCountEl) {

@@ -179,7 +179,7 @@ export const App: AppModule = {
     }
 
     // Refresh heatmap if visible
-    if (window.Heatmap && window.Heatmap.isVisible) {
+    if (window.Heatmap?.isVisible) {
       await window.Heatmap.onTimeRangeChanged();
     }
 

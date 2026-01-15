@@ -180,7 +180,7 @@ const PlayerInfo: PlayerInfoModule = {
 
         // Find the item in our cached items
         const item = this.items.find((i) => i.name === selectedName);
-        if (item && item.id) {
+        if (item?.id) {
           await this.searchByItemId(item.id, item.name);
         }
       });
@@ -193,7 +193,7 @@ const PlayerInfo: PlayerInfoModule = {
           if (!selectedName) return;
 
           const item = this.items.find((i) => i.name === selectedName);
-          if (item && item.id) {
+          if (item?.id) {
             await this.searchByItemId(item.id, item.name);
           }
         }
@@ -990,10 +990,10 @@ const PlayerInfo: PlayerInfoModule = {
     if (!matchingItem && this.inventoryHistory && this.inventoryHistory.length > 0) {
       const inventoryMatch = this.inventoryHistory.find(
         (item) =>
-          (item.itemName && item.itemName.toLowerCase().includes(itemName.toLowerCase())) ||
-          (item.itemCode && item.itemCode.toLowerCase().includes(itemName.toLowerCase()))
+          item.itemName?.toLowerCase().includes(itemName.toLowerCase()) ||
+          item.itemCode?.toLowerCase().includes(itemName.toLowerCase())
       );
-      if (inventoryMatch && inventoryMatch.itemId) {
+      if (inventoryMatch?.itemId) {
         matchingItem = { id: inventoryMatch.itemId, name: inventoryMatch.itemName || inventoryMatch.itemCode || '' };
         console.log(`[PlayerInfo] Found item ID in inventory cache: ${matchingItem.id}`);
       }
@@ -1126,7 +1126,7 @@ const PlayerInfo: PlayerInfoModule = {
         await this.showPlayer(playerId);
 
         // Also focus on the player in the map if available
-        if (window.Players && window.Players.focusPlayer) {
+        if (window.Players?.focusPlayer) {
           window.Players.focusPlayer(playerId);
         }
       });
@@ -1166,7 +1166,7 @@ const PlayerInfo: PlayerInfoModule = {
         } else {
           // Fallback: try to find itemId in inventory history
           const item = this.inventoryHistory.find((i) => i.itemName === itemName || i.itemCode === itemCode);
-          if (item && item.itemId) {
+          if (item?.itemId) {
             this.searchByItemId(item.itemId, itemName || itemCode || '');
           } else {
             // Last resort: search by name
@@ -1362,7 +1362,7 @@ const PlayerInfo: PlayerInfoModule = {
         if (!playerId) return;
 
         // Load the player's movement path
-        if (window.History && window.History.loadSinglePlayerPath) {
+        if (window.History?.loadSinglePlayerPath) {
           const { start, end }: DateRange = window.TimeRange
             ? window.TimeRange.getDateRange()
             : { start: new Date(Date.now() - 24 * 60 * 60 * 1000), end: new Date() };
@@ -1373,7 +1373,7 @@ const PlayerInfo: PlayerInfoModule = {
         await this.showPlayer(playerId);
 
         // Focus on the player in the map
-        if (window.Players && window.Players.focusPlayer) {
+        if (window.Players?.focusPlayer) {
           window.Players.focusPlayer(playerId);
         }
       });
@@ -1406,7 +1406,7 @@ const PlayerInfo: PlayerInfoModule = {
     }
 
     // Also clear the area shape from the map
-    if (window.AreaSearch && window.AreaSearch.clear) {
+    if (window.AreaSearch?.clear) {
       window.AreaSearch.clear();
     }
   },

@@ -463,7 +463,12 @@ export class TakaroClient {
     return data;
   }
 
-  async getPlayers(gameServerId: string, startDate?: string, endDate?: string, loadAll = false): Promise<NormalizedPlayer[]> {
+  async getPlayers(
+    gameServerId: string,
+    startDate?: string,
+    endDate?: string,
+    loadAll = false
+  ): Promise<NormalizedPlayer[]> {
     if (!this.client) throw new Error('Client not initialized');
 
     // Cache key includes date range and loadAll flag
@@ -471,8 +476,8 @@ export class TakaroClient {
       'players',
       this.domain || 'service',
       gameServerId,
-      loadAll ? 'all' : (startDate || 'nostart'),
-      loadAll ? 'all' : (endDate || 'noend')
+      loadAll ? 'all' : startDate || 'nostart',
+      loadAll ? 'all' : endDate || 'noend'
     );
     const cached = await cache.get<NormalizedPlayer[]>(cacheKey);
     if (cached) return cached;
@@ -497,7 +502,7 @@ export class TakaroClient {
         console.log('  → Fetching ALL players (this may take a while)...');
         allPogs = await fetchAllPaginated(
           (page, limit) =>
-            this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+            this.client?.playerOnGameserver.playerOnGameServerControllerSearch({
               filters: {
                 gameServerId: [gameServerId],
               },
@@ -514,7 +519,7 @@ export class TakaroClient {
 
         // 1. Get ONLINE players (usually small number, fast)
         console.log('  → Fetching online players...');
-        const onlineResponse = await this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+        const onlineResponse = await this.client?.playerOnGameserver.playerOnGameServerControllerSearch({
           filters: {
             gameServerId: [gameServerId],
             online: [true],
@@ -532,7 +537,7 @@ export class TakaroClient {
           console.log('  → Fetching recent offline players...');
 
           // Fetch limited offline players - we'll filter by date
-          const offlineResponse = await this.client!.playerOnGameserver.playerOnGameServerControllerSearch({
+          const offlineResponse = await this.client?.playerOnGameserver.playerOnGameServerControllerSearch({
             filters: {
               gameServerId: [gameServerId],
               online: [false],
@@ -596,7 +601,7 @@ export class TakaroClient {
     // Get all players for this game server with pagination
     const players = await fetchAllPaginated(
       (page, limit) =>
-        this.client!.player.playerControllerSearch({
+        this.client?.player.playerControllerSearch({
           filters: {},
           sortBy: 'name',
           sortDirection: 'asc',

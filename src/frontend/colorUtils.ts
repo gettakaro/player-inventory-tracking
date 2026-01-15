@@ -68,7 +68,7 @@ export const ColorUtils: ColorUtilsType = {
       window.Players.refreshVisibility();
     }
     // Refresh paths if visible
-    if (window.History && window.History.isVisible) {
+    if (window.History?.isVisible) {
       window.History.drawPaths();
     }
   },

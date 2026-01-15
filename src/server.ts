@@ -266,7 +266,7 @@ app.post('/api/domains/select', async (req: Request, res: Response) => {
 // Get game servers
 app.get('/api/gameservers', requireAuth as express.RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const servers = await req.session!.takaroClient.getGameServers();
+    const servers = await req.session?.takaroClient.getGameServers();
     res.json({ data: servers });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
@@ -281,7 +281,7 @@ app.get(
     const gameServerId = req.params.gameServerId as string;
 
     try {
-      const mapInfo = await req.session!.takaroClient.getMapInfo(gameServerId);
+      const mapInfo = await req.session?.takaroClient.getMapInfo(gameServerId);
       res.json({
         data: {
           worldSize: mapInfo.mapSizeX || 8192,
@@ -312,7 +312,7 @@ app.get(
     const takaroY = parseInt(y, 10);
 
     // Disk cache path - include domain to isolate caches between domains
-    const domain = req.session!.domain || 'service';
+    const domain = req.session?.domain || 'service';
     const tileCachePath = path.join(TILE_CACHE_DIR, domain, gameServerId, z, `${takaroX}_${takaroY}.png`);
 
     try {
@@ -328,7 +328,7 @@ app.get(
         // Not in cache, fetch from Takaro
       }
 
-      const tileData = await req.session!.takaroClient.getMapTile(gameServerId, parseInt(z, 10), takaroX, takaroY);
+      const tileData = await req.session?.takaroClient.getMapTile(gameServerId, parseInt(z, 10), takaroX, takaroY);
 
       if (tileData) {
         // Save to disk cache
@@ -369,7 +369,7 @@ app.get('/api/players', requireAuth as express.RequestHandler, async (req: Authe
     // Pass date range and loadAll flag to Takaro client
     // loadAll=true fetches all players via pagination (slow but complete)
     // Otherwise fetches online players + filtered offline players (fast)
-    const players = await req.session!.takaroClient.getPlayers(
+    const players = await req.session?.takaroClient.getPlayers(
       gameServerId as string,
       startDate as string | undefined,
       endDate as string | undefined,
@@ -391,7 +391,7 @@ app.get(
     const { startDate, endDate } = req.query;
 
     try {
-      const inventory = await req.session!.takaroClient.getPlayerInventoryHistory(
+      const inventory = await req.session?.takaroClient.getPlayerInventoryHistory(
         playerId,
         startDate as string | undefined,
         endDate as string | undefined
@@ -412,7 +412,7 @@ app.get(
     const { startDate, endDate } = req.query;
 
     try {
-      const history = await req.session!.takaroClient.getPlayerMovementHistory(
+      const history = await req.session?.takaroClient.getPlayerMovementHistory(
         playerId,
         startDate as string | undefined,
         endDate as string | undefined
@@ -532,14 +532,14 @@ app.get(
 
     try {
       // Get all movement data from Takaro
-      const results = await req.session!.takaroClient.getMovementPaths(
+      const results = await req.session?.takaroClient.getMovementPaths(
         gameServerId as string,
         startDate as string | undefined,
         endDate as string | undefined
       );
 
       // Enrich with player names
-      const enrichedResults = await enrichWithPlayerNames(req.session!.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
 
       // Group by player for path drawing
       const paths: Record<
@@ -603,7 +603,7 @@ app.post(
     }
 
     try {
-      const results = await req.session!.takaroClient.getPlayersInBox(
+      const results = await req.session?.takaroClient.getPlayersInBox(
         gameServerId,
         minX,
         maxX,
@@ -616,7 +616,7 @@ app.post(
       );
 
       // Enrich with player names from Takaro
-      const enrichedResults = await enrichWithPlayerNames(req.session!.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
 
       res.json({ data: enrichedResults });
     } catch (error) {
@@ -643,7 +643,7 @@ app.post(
     }
 
     try {
-      const results = await req.session!.takaroClient.getPlayersInRadius(
+      const results = await req.session?.takaroClient.getPlayersInRadius(
         gameServerId,
         x,
         y ?? 0,
@@ -654,7 +654,7 @@ app.post(
       );
 
       // Enrich with player names from Takaro
-      const enrichedResults = await enrichWithPlayerNames(req.session!.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
 
       res.json({ data: enrichedResults });
     } catch (error) {
@@ -675,7 +675,7 @@ app.get('/api/items', requireAuth as express.RequestHandler, async (req: Authent
   }
 
   try {
-    const items = await req.session!.takaroClient.getItems(gameServerId as string, (search as string) || null);
+    const items = await req.session?.takaroClient.getItems(gameServerId as string, (search as string) || null);
     res.json({ data: items });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
@@ -697,10 +697,10 @@ app.post(
     }
 
     try {
-      const results = await req.session!.takaroClient.getPlayersByItem(itemId, startDate, endDate);
+      const results = await req.session?.takaroClient.getPlayersByItem(itemId, startDate, endDate);
 
       // Enrich with player names from Takaro
-      const enrichedResults = await enrichWithPlayerNames(req.session!.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
 
       res.json({ data: enrichedResults });
     } catch (error) {
@@ -725,7 +725,7 @@ app.post(
     }
 
     try {
-      await req.session!.takaroClient.giveItem(
+      await req.session?.takaroClient.giveItem(
         gameServerId as string,
         playerId as string,
         itemName as string,
@@ -753,7 +753,7 @@ app.post(
     }
 
     try {
-      await req.session!.takaroClient.addCurrency(gameServerId as string, playerId as string, currency as number);
+      await req.session?.takaroClient.addCurrency(gameServerId as string, playerId as string, currency as number);
       res.json({ success: true, message: `Added ${currency} currency to player` });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to add currency' });

@@ -1,6 +1,6 @@
 // Player list panel management
 
-import type { AreaSearchResult, DateRange, InventoryItem, ItemSearchResult, Player } from './types.js';
+import type { DateRange, Player } from './types.js';
 
 interface CollapsedGroups {
   online: boolean;
@@ -494,7 +494,7 @@ const PlayerList: PlayerListModule = {
       window.Players.updateSelectionVisibility(this.selectedPlayers);
     }
     // Also redraw paths if visible to respect player selection
-    if (window.History && window.History.isVisible) {
+    if (window.History?.isVisible) {
       window.History.drawPaths();
     }
     // Refresh heatmap if filtering by selection

@@ -494,15 +494,17 @@ export class TakaroClient {
     const fetchPromise = (async () => {
       const start = Date.now();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: Complex API response types
       let allPogs: any[] = [];
 
       if (loadAll) {
         // LOAD ALL: Fetch all players via pagination (slow but complete)
         console.log('  → Fetching ALL players (this may take a while)...');
+        const client = this.client;
+        if (!client) throw new Error('Client not initialized');
         allPogs = await fetchAllPaginated(
           (page, limit) =>
-            this.client?.playerOnGameserver.playerOnGameServerControllerSearch({
+            client.playerOnGameserver.playerOnGameServerControllerSearch({
               filters: {
                 gameServerId: [gameServerId],
               },
@@ -519,7 +521,8 @@ export class TakaroClient {
 
         // 1. Get ONLINE players (usually small number, fast)
         console.log('  → Fetching online players...');
-        const onlineResponse = await this.client?.playerOnGameserver.playerOnGameServerControllerSearch({
+        if (!this.client) throw new Error('Client not initialized');
+        const onlineResponse = await this.client.playerOnGameserver.playerOnGameServerControllerSearch({
           filters: {
             gameServerId: [gameServerId],
             online: [true],
@@ -527,7 +530,7 @@ export class TakaroClient {
           extend: ['player'],
           limit: 100, // Online players rarely exceed this
         });
-        const onlinePogs = onlineResponse.data.data || [];
+        const onlinePogs = onlineResponse?.data.data || [];
         logApiCall('getPlayers (online)', start, onlinePogs.length);
 
         // 2. Get recent OFFLINE players (limited fetch, filter by date)
@@ -537,7 +540,7 @@ export class TakaroClient {
           console.log('  → Fetching recent offline players...');
 
           // Fetch limited offline players - we'll filter by date
-          const offlineResponse = await this.client?.playerOnGameserver.playerOnGameServerControllerSearch({
+          const offlineResponse = await this.client.playerOnGameserver.playerOnGameServerControllerSearch({
             filters: {
               gameServerId: [gameServerId],
               online: [false],
@@ -545,7 +548,7 @@ export class TakaroClient {
             extend: ['player'],
             limit: 500, // Reasonable limit for offline players
           });
-          offlinePogs = offlineResponse.data.data || [];
+          offlinePogs = offlineResponse?.data.data || [];
 
           // Filter by date range
           const startTime = startDate ? new Date(startDate).getTime() : 0;
@@ -598,10 +601,11 @@ export class TakaroClient {
   async getPlayerList(_gameServerId: string): Promise<TakaroPlayer[]> {
     if (!this.client) throw new Error('Client not initialized');
 
+    const client = this.client;
     // Get all players for this game server with pagination
-    const players = await fetchAllPaginated(
+    const players = await fetchAllPaginated<TakaroPlayer>(
       (page, limit) =>
-        this.client?.player.playerControllerSearch({
+        client.player.playerControllerSearch({
           filters: {},
           sortBy: 'name',
           sortDirection: 'asc',

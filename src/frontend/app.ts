@@ -72,9 +72,9 @@ export const App: AppModule = {
     if (showPaths) {
       showPaths.addEventListener('change', async (e) => {
         const target = e.target as HTMLInputElement;
-        if (target.checked) {
+        if (target.checked && this.gameServerId) {
           const { start, end } = window.TimeRange.getDateRange();
-          await window.History.loadPaths(this.gameServerId!, start, end);
+          await window.History.loadPaths(this.gameServerId, start, end);
         }
         window.History.setVisible(target.checked);
       });
@@ -203,7 +203,9 @@ export const App: AppModule = {
     this.isMapInitialized = true;
 
     // Initialize area search after map is ready with callback
-    window.AreaSearch.init(window.GameMap.map!, gameServerId, async (results: AreaSearchResult[]) => {
+    const map = window.GameMap.map;
+    if (!map) return;
+    window.AreaSearch.init(map, gameServerId, async (results: AreaSearchResult[]) => {
       // Show results in the Area Search tab in the bottom panel
       if (window.PlayerInfo) {
         window.PlayerInfo.showAreaSearchResults(results);

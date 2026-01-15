@@ -284,8 +284,8 @@ app.get(
       const mapInfo = await req.session?.takaroClient.getMapInfo(gameServerId);
       res.json({
         data: {
-          worldSize: mapInfo.mapSizeX || 8192,
-          maxZoom: mapInfo.maxZoom || 4,
+          worldSize: mapInfo?.mapSizeX || 8192,
+          maxZoom: mapInfo?.maxZoom || 4,
           ...mapInfo,
         },
       });
@@ -531,15 +531,16 @@ app.get(
     }
 
     try {
+      if (!req.session?.takaroClient) throw new Error('Not authenticated');
       // Get all movement data from Takaro
-      const results = await req.session?.takaroClient.getMovementPaths(
+      const results = await req.session.takaroClient.getMovementPaths(
         gameServerId as string,
         startDate as string | undefined,
         endDate as string | undefined
       );
 
       // Enrich with player names
-      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session.takaroClient, results);
 
       // Group by player for path drawing
       const paths: Record<
@@ -603,7 +604,8 @@ app.post(
     }
 
     try {
-      const results = await req.session?.takaroClient.getPlayersInBox(
+      if (!req.session?.takaroClient) throw new Error('Not authenticated');
+      const results = await req.session.takaroClient.getPlayersInBox(
         gameServerId,
         minX,
         maxX,
@@ -616,7 +618,7 @@ app.post(
       );
 
       // Enrich with player names from Takaro
-      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session.takaroClient, results);
 
       res.json({ data: enrichedResults });
     } catch (error) {
@@ -643,7 +645,8 @@ app.post(
     }
 
     try {
-      const results = await req.session?.takaroClient.getPlayersInRadius(
+      if (!req.session?.takaroClient) throw new Error('Not authenticated');
+      const results = await req.session.takaroClient.getPlayersInRadius(
         gameServerId,
         x,
         y ?? 0,
@@ -654,7 +657,7 @@ app.post(
       );
 
       // Enrich with player names from Takaro
-      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session.takaroClient, results);
 
       res.json({ data: enrichedResults });
     } catch (error) {
@@ -697,10 +700,11 @@ app.post(
     }
 
     try {
-      const results = await req.session?.takaroClient.getPlayersByItem(itemId, startDate, endDate);
+      if (!req.session?.takaroClient) throw new Error('Not authenticated');
+      const results = await req.session.takaroClient.getPlayersByItem(itemId, startDate, endDate);
 
       // Enrich with player names from Takaro
-      const enrichedResults = await enrichWithPlayerNames(req.session?.takaroClient, results);
+      const enrichedResults = await enrichWithPlayerNames(req.session.takaroClient, results);
 
       res.json({ data: enrichedResults });
     } catch (error) {

@@ -62,8 +62,8 @@ export const Players = {
     return `
       <div class="player-popup" data-player-id="${player.playerId}" data-popup-id="${popupId}">
         <h4>${player.name}</h4>
-        <p><strong>Position:</strong> X: ${Math.round(player.x!)}, Z: ${Math.round(player.z!)}</p>
-        ${player.y !== null ? `<p><strong>Height:</strong> ${Math.round(player.y!)}</p>` : ''}
+        <p><strong>Position:</strong> X: ${Math.round(player.x ?? 0)}, Z: ${Math.round(player.z ?? 0)}</p>
+        ${player.y !== null ? `<p><strong>Height:</strong> ${Math.round(player.y)}</p>` : ''}
         <p>
           <span class="online-status ${player.online ? 'online' : 'offline'}">
             ${player.online ? 'Online' : 'Offline'}
@@ -221,11 +221,13 @@ export const Players = {
 
         for (const { player, isOnline } of batch) {
           currentIds.add(player.id);
-          const pos = window.GameMap.gameToLatLng(player.x!, player.z!);
+          // player.x and player.z are guaranteed to be non-null here (filtered earlier)
+          const pos = window.GameMap.gameToLatLng(player.x as number, player.z as number);
 
-          if (this.markers.has(player.id)) {
+          const existingMarker = this.markers.get(player.id);
+          if (existingMarker) {
             // Update existing marker
-            const marker = this.markers.get(player.id)!;
+            const marker = existingMarker;
             marker.setLatLng(pos);
             marker.setIcon(this.createIcon(isOnline, player.playerId));
             marker.getPopup()?.setContent(this.createPopupContent(player));
@@ -244,7 +246,9 @@ export const Players = {
               }
             });
 
-            marker.addTo(window.GameMap.map!);
+            if (window.GameMap.map) {
+              marker.addTo(window.GameMap.map);
+            }
             this.markers.set(player.id, marker);
           }
         }
@@ -330,8 +334,8 @@ export const Players = {
       if (shouldShow) {
         if (existingMarker) {
           // Show existing marker
-          if (!window.GameMap.map?.hasLayer(existingMarker)) {
-            existingMarker.addTo(window.GameMap.map!);
+          if (window.GameMap.map && !window.GameMap.map.hasLayer(existingMarker)) {
+            existingMarker.addTo(window.GameMap.map);
           }
         } else {
           // Create marker for newly visible player
@@ -345,7 +349,9 @@ export const Players = {
               window.PlayerInfo.showPlayer(player.playerId || player.id);
             }
           });
-          marker.addTo(window.GameMap.map!);
+          if (window.GameMap.map) {
+            marker.addTo(window.GameMap.map);
+          }
           this.markers.set(player.id, marker);
         }
       } else {
@@ -483,10 +489,12 @@ export const Players = {
         const amountInput = popup.querySelector('.popup-item-amount') as HTMLInputElement;
         const qualityInput = popup.querySelector('.popup-item-quality') as HTMLInputElement;
 
-        if (!playerId || !itemInput?.value || !amountInput?.value) {
-          this.showPopupStatus(popupId!, 'Please fill in item name and amount', 'error');
+        if (!playerId || !popupId || !itemInput?.value || !amountInput?.value) {
+          if (popupId) this.showPopupStatus(popupId, 'Please fill in item name and amount', 'error');
           return;
         }
+
+        if (!this.gameServerId) return;
 
         const btn = target as HTMLButtonElement;
         try {
@@ -494,18 +502,18 @@ export const Players = {
           btn.textContent = 'Giving...';
 
           await window.API.giveItem(
-            this.gameServerId!,
+            this.gameServerId,
             playerId,
             itemInput.value,
             parseInt(amountInput.value, 10),
             qualityInput?.value || '1'
           );
 
-          this.showPopupStatus(popupId!, `Gave ${amountInput.value}x ${itemInput.value}`, 'success');
+          this.showPopupStatus(popupId, `Gave ${amountInput.value}x ${itemInput.value}`, 'success');
           itemInput.value = '';
           amountInput.value = '1';
         } catch (error) {
-          this.showPopupStatus(popupId!, error instanceof Error ? error.message : 'Failed', 'error');
+          this.showPopupStatus(popupId, error instanceof Error ? error.message : 'Failed', 'error');
         } finally {
           btn.disabled = false;
           btn.textContent = 'Give Item';
@@ -522,10 +530,12 @@ export const Players = {
         const popupId = popup.dataset.popupId;
         const currencyInput = popup.querySelector('.popup-currency-amount') as HTMLInputElement;
 
-        if (!playerId || !currencyInput?.value) {
-          this.showPopupStatus(popupId!, 'Please enter a currency amount', 'error');
+        if (!playerId || !popupId || !currencyInput?.value) {
+          if (popupId) this.showPopupStatus(popupId, 'Please enter a currency amount', 'error');
           return;
         }
+
+        if (!this.gameServerId) return;
 
         const btn = target as HTMLButtonElement;
         try {
@@ -533,9 +543,9 @@ export const Players = {
           btn.textContent = 'Adding...';
 
           const amount = parseInt(currencyInput.value, 10);
-          await window.API.addCurrency(this.gameServerId!, playerId, amount);
+          await window.API.addCurrency(this.gameServerId, playerId, amount);
 
-          this.showPopupStatus(popupId!, `Added ${amount} currency`, 'success');
+          this.showPopupStatus(popupId, `Added ${amount} currency`, 'success');
           currencyInput.value = '';
 
           // Update currency display in popup
@@ -546,11 +556,9 @@ export const Players = {
           }
 
           // Refresh player data
-          if (this.gameServerId) {
-            this.update(this.gameServerId);
-          }
+          this.update(this.gameServerId);
         } catch (error) {
-          this.showPopupStatus(popupId!, error instanceof Error ? error.message : 'Failed', 'error');
+          this.showPopupStatus(popupId, error instanceof Error ? error.message : 'Failed', 'error');
         } finally {
           btn.disabled = false;
           btn.textContent = 'Add';
@@ -569,9 +577,10 @@ export const Players = {
         const popupId = target.dataset.popupId;
 
         if (query.length >= 2 && popupId && this.gameServerId) {
+          const serverId = this.gameServerId;
           searchTimeout = setTimeout(async () => {
             try {
-              const items = await window.API.getItems(this.gameServerId!, query);
+              const items = await window.API.getItems(serverId, query);
               const datalist = document.getElementById(`popup-items-${popupId}`);
               if (datalist) {
                 datalist.innerHTML = items

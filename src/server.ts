@@ -193,7 +193,7 @@ app.get('/api/auth/status', async (req: Request, res: Response) => {
       domain: domainId,
       availableDomains: domains,
       needsLogin: !isValid,
-      loginUrl: apiUrl,
+      loginUrl: dashboardUrl,
       dashboardUrl,
     });
   }

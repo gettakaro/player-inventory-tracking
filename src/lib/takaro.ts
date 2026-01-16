@@ -259,6 +259,16 @@ export async function createCookieClient(
     client.setHeader('Cookie', `${existingCookies}${separator}takaro-domain=${domainId}`);
   }
 
+  // If domain specified, call setSelectedDomain to scope API queries to that domain
+  if (domainId) {
+    try {
+      await client.user.userControllerSetSelectedDomain(domainId);
+    } catch (error) {
+      console.warn('Failed to set selected domain:', error instanceof Error ? error.message : 'Unknown error');
+      // Continue anyway - some queries might still work
+    }
+  }
+
   return client;
 }
 

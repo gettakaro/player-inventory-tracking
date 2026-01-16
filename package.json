@@ -1,6 +1,6 @@
 {
   "name": "takaro-player-map",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "7 Days to Die player map with movement history tracking via Takaro",
   "main": "dist/server.js",
   "type": "module",

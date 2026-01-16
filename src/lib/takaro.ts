@@ -133,6 +133,8 @@ interface TakaroSDKClient {
     playerOnGameServerControllerSearch(params: {
       filters: { gameServerId: string[] };
       extend?: string[];
+      sortBy?: string;
+      sortDirection?: 'asc' | 'desc';
       page?: number;
       limit?: number;
     }): Promise<{
@@ -481,131 +483,104 @@ export class TakaroClient {
   ): Promise<NormalizedPlayer[]> {
     if (!this.client) throw new Error('Client not initialized');
 
-    // Cache key includes date range and loadAll flag
-    const cacheKey = cache.key(
-      'players',
-      this.domain || 'service',
-      gameServerId,
-      loadAll ? 'all' : startDate || 'nostart',
-      loadAll ? 'all' : endDate || 'noend'
-    );
-    const cached = await cache.get<NormalizedPlayer[]>(cacheKey);
-    if (cached) return cached;
+    // CACHE-THEN-FILTER PATTERN:
+    // 1. Always cache the FULL player list (no date filtering in cache key)
+    // 2. Filter by date range when returning
+    // This makes range changes instant (just re-filter cached data)
 
-    // Check if there's already an in-flight request for this data
-    const inFlightKey = `players:${this.domain || 'service'}:${gameServerId}:${loadAll ? 'all' : startDate || 'nostart'}:${loadAll ? 'all' : endDate || 'noend'}`;
+    const fullCacheKey = cache.key('players', this.domain || 'service', gameServerId, 'full');
+
+    // Check if there's already an in-flight request for the full list
+    const inFlightKey = `players:${this.domain || 'service'}:${gameServerId}:full`;
     const inFlight = inFlightRequests.get(inFlightKey);
+
+    let allPlayers: NormalizedPlayer[];
+
     if (inFlight) {
-      console.log(`  ⏳ Waiting for in-flight request: ${inFlightKey}`);
-      return inFlight as Promise<NormalizedPlayer[]>;
-    }
-
-    // Create the fetch promise and store it
-    const fetchPromise = (async () => {
-      const start = Date.now();
-
-      // biome-ignore lint/suspicious/noExplicitAny: Complex API response types
-      let allPogs: any[] = [];
-
-      if (loadAll) {
-        // LOAD ALL: Fetch all players via pagination (slow but complete)
-        console.log('  → Fetching ALL players (this may take a while)...');
-        const client = this.client;
-        if (!client) throw new Error('Client not initialized');
-        allPogs = await fetchAllPaginated(
-          (page, limit) =>
-            client.playerOnGameserver.playerOnGameServerControllerSearch({
-              filters: {
-                gameServerId: [gameServerId],
-              },
-              extend: ['player'],
-              page,
-              limit,
-            }),
-          100 // Page size
-        );
-        logApiCall('getPlayers (ALL)', start, allPogs.length);
+      console.log(`  ⏳ Waiting for in-flight player fetch...`);
+      allPlayers = (await inFlight) as NormalizedPlayer[];
+    } else {
+      // Try cache first
+      const cached = await cache.get<NormalizedPlayer[]>(fullCacheKey);
+      if (cached) {
+        allPlayers = cached;
       } else {
-        // FAST MODE: Fetch online players first (fast, small), then limited offline players
-        // This is MUCH faster than fetching all 2000+ players
+        // Fetch ALL players and cache them
+        const fetchPromise = (async () => {
+          const start = Date.now();
+          console.log('  → Fetching ALL players (caching for fast filtering)...');
 
-        // 1. Get ONLINE players (usually small number, fast)
-        console.log('  → Fetching online players...');
-        if (!this.client) throw new Error('Client not initialized');
-        const onlineResponse = await this.client.playerOnGameserver.playerOnGameServerControllerSearch({
-          filters: {
-            gameServerId: [gameServerId],
-            online: [true],
-          } as { gameServerId: string[]; online: boolean[] },
-          extend: ['player'],
-          limit: 100, // Online players rarely exceed this
-        });
-        const onlinePogs = onlineResponse?.data.data || [];
-        logApiCall('getPlayers (online)', start, onlinePogs.length);
+          const client = this.client;
+          if (!client) throw new Error('Client not initialized');
 
-        // 2. Get recent OFFLINE players (limited fetch, filter by date)
-        let offlinePogs: typeof onlinePogs = [];
-        if (startDate || endDate) {
-          const offlineStart = Date.now();
-          console.log('  → Fetching recent offline players...');
+          const allPogs = await fetchAllPaginated(
+            (page, limit) =>
+              client.playerOnGameserver.playerOnGameServerControllerSearch({
+                filters: {
+                  gameServerId: [gameServerId],
+                },
+                extend: ['player'],
+                page,
+                limit,
+              }),
+            100 // Page size
+          );
+          logApiCall('getPlayers (full list)', start, allPogs.length);
 
-          // Fetch limited offline players - we'll filter by date
-          const offlineResponse = await this.client.playerOnGameserver.playerOnGameServerControllerSearch({
-            filters: {
-              gameServerId: [gameServerId],
-              online: [false],
-            } as { gameServerId: string[]; online: boolean[] },
-            extend: ['player'],
-            limit: 500, // Reasonable limit for offline players
-          });
-          offlinePogs = offlineResponse?.data.data || [];
+          const players = allPogs.map((pog) => ({
+            id: pog.id,
+            playerId: pog.playerId,
+            name: pog.player?.name || 'Unknown',
+            steamId: pog.player?.steamId,
+            x: pog.positionX,
+            y: pog.positionY,
+            z: pog.positionZ,
+            ping: pog.ping,
+            currency: pog.currency,
+            playtimeSeconds: pog.playtimeSeconds,
+            lastSeen: pog.lastSeen,
+            online: pog.online ?? false,
+          }));
 
-          // Filter by date range
-          const startTime = startDate ? new Date(startDate).getTime() : 0;
-          const endTime = endDate ? new Date(endDate).getTime() : Date.now();
+          // Cache the full list for 30 seconds (matches auto-refresh interval)
+          await cache.set(fullCacheKey, players, TTL.PLAYERS_LIST);
+          return players;
+        })();
 
-          offlinePogs = offlinePogs.filter((pog) => {
-            if (!pog.lastSeen) return false;
-            const lastSeenTime = new Date(pog.lastSeen).getTime();
-            return lastSeenTime >= startTime && lastSeenTime <= endTime;
-          });
-
-          logApiCall('getPlayers (offline filtered)', offlineStart, offlinePogs.length);
+        // Store the promise and clean up when done
+        inFlightRequests.set(inFlightKey, fetchPromise);
+        try {
+          allPlayers = await fetchPromise;
+        } finally {
+          inFlightRequests.delete(inFlightKey);
         }
-
-        // Combine online and filtered offline players
-        allPogs = [...onlinePogs, ...offlinePogs];
-        logApiCall('getPlayers (total)', start, allPogs.length);
       }
-
-      const players = allPogs.map((pog) => ({
-        id: pog.id,
-        playerId: pog.playerId,
-        name: pog.player?.name || 'Unknown',
-        steamId: pog.player?.steamId,
-        x: pog.positionX,
-        y: pog.positionY,
-        z: pog.positionZ,
-        ping: pog.ping,
-        currency: pog.currency,
-        playtimeSeconds: pog.playtimeSeconds,
-        lastSeen: pog.lastSeen,
-        online: pog.online ?? false,
-      }));
-
-      // Cache - longer TTL for loadAll since it's expensive
-      await cache.set(cacheKey, players, loadAll ? 60 : TTL.PLAYERS_LIST);
-      return players;
-    })();
-
-    // Store the promise and clean up when done
-    inFlightRequests.set(inFlightKey, fetchPromise);
-    try {
-      const result = await fetchPromise;
-      return result;
-    } finally {
-      inFlightRequests.delete(inFlightKey);
     }
+
+    // If loadAll requested, return everything
+    if (loadAll) {
+      return allPlayers;
+    }
+
+    // Filter by date range
+    if (!startDate && !endDate) {
+      // No date filter - return only online players
+      return allPlayers.filter((p) => p.online === true || p.online === 1);
+    }
+
+    const startTime = startDate ? new Date(startDate).getTime() : 0;
+    const endTime = endDate ? new Date(endDate).getTime() : Date.now();
+
+    return allPlayers.filter((player) => {
+      // Always include online players
+      if (player.online === true || player.online === 1) {
+        return true;
+      }
+      // Include offline players within the date range
+      if (!player.lastSeen) return false;
+      const lastSeenTime = new Date(player.lastSeen).getTime();
+      return lastSeenTime >= startTime && lastSeenTime <= endTime;
+    });
   }
 
   async getPlayerList(_gameServerId: string): Promise<TakaroPlayer[]> {

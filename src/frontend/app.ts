@@ -167,9 +167,18 @@ export const App: AppModule = {
       window.PlayerList.onTimeRangeChange();
     }
 
-    // Refresh map markers with new time filter
+    // Check if we need to re-fetch players (range expanded beyond loaded data)
     if (window.Players) {
-      window.Players.refreshVisibility();
+      const newStartTime = startDate.getTime();
+      const newEndTime = endDate.getTime();
+
+      if (window.Players.needsRefetch(newStartTime, newEndTime)) {
+        // Range expanded - fetch new data from API
+        await window.Players.update(this.gameServerId);
+      } else {
+        // Range same or shrunk - just filter existing data
+        window.Players.refreshVisibility();
+      }
     }
 
     // Reload paths if they're visible

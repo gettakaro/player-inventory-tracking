@@ -12,6 +12,9 @@ export const Players = {
   selectedPlayers: new Set<string>(),
   refreshInterval: null as ReturnType<typeof setInterval> | null,
   gameServerId: null as string | null,
+  // Track the time range that was last fetched (for smart re-fetching on range expand)
+  loadedStartTime: null as number | null,
+  loadedEndTime: null as number | null,
 
   // Create custom marker icons with player-specific colors
   createIcon(online: boolean, playerId: string | null = null): L.DivIcon {
@@ -161,6 +164,10 @@ export const Players = {
       // Store for lookup by other modules (e.g., AreaSearch)
       this.allPlayers = players;
 
+      // Track the loaded time range (for smart re-fetching when range expands)
+      this.loadedStartTime = startTime;
+      this.loadedEndTime = endTime;
+
       // Filter players for markers and count
       const playersToRender: Array<{ player: Player; isOnline: boolean }> = [];
       let onlineCount = 0;
@@ -287,6 +294,17 @@ export const Players = {
     this.refreshVisibility();
   },
 
+  // Check if a new time range requires re-fetching data from API
+  // Returns true if the new range extends beyond what's currently loaded
+  needsRefetch(newStartTime: number, newEndTime: number): boolean {
+    // If we haven't loaded anything yet, we need to fetch
+    if (this.loadedStartTime === null || this.loadedEndTime === null) {
+      return true;
+    }
+    // Re-fetch if new range starts earlier or ends later than what's loaded
+    return newStartTime < this.loadedStartTime || newEndTime > this.loadedEndTime;
+  },
+
   updateSelectionVisibility(selectedSet: Set<string>): void {
     this.selectedPlayers = selectedSet;
     this.refreshVisibility();
@@ -405,6 +423,10 @@ export const Players = {
 
       // Store for lookup by other modules
       this.allPlayers = players;
+
+      // Mark as fully loaded - no time range restrictions
+      this.loadedStartTime = -Infinity;
+      this.loadedEndTime = Infinity;
 
       // Count players
       let onlineCount = 0;

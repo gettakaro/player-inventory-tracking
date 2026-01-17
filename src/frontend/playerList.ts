@@ -486,7 +486,46 @@ const PlayerList: PlayerListModule = {
   },
 
   getFilteredPlayers(): Player[] {
-    return this.players.filter((p) => !this.searchTerm || p.name.toLowerCase().includes(this.searchTerm));
+    let filteredPlayers = this.players;
+
+    // Apply time filter (must match render() logic)
+    if (this.timeFilterEnabled && window.TimeRange) {
+      const { start, end }: DateRange = window.TimeRange.getDateRange();
+      const startTime = start.getTime();
+      const endTime = end.getTime();
+
+      filteredPlayers = filteredPlayers.filter((player) => {
+        // Always include online players regardless of time filter
+        const isOnline = player.online === 1 || player.online === true;
+        if (isOnline) return true;
+
+        // For offline players, filter by lastSeen within time range
+        if (!player.lastSeen) return false;
+        const lastSeenTime = new Date(player.lastSeen).getTime();
+        return lastSeenTime >= startTime && lastSeenTime <= endTime;
+      });
+    }
+
+    // Apply area filter if active
+    if (this.areaFilterActive) {
+      filteredPlayers = filteredPlayers.filter(
+        (p) => this.areaFilterPlayerIds.has(String(p.id)) || this.areaFilterPlayerIds.has(String(p.playerId))
+      );
+    }
+
+    // Apply item filter if active
+    if (this.itemFilterActive) {
+      filteredPlayers = filteredPlayers.filter(
+        (p) => this.itemFilterPlayerIds.has(String(p.id)) || this.itemFilterPlayerIds.has(String(p.playerId))
+      );
+    }
+
+    // Apply search filter
+    if (this.searchTerm) {
+      filteredPlayers = filteredPlayers.filter((p) => p.name.toLowerCase().includes(this.searchTerm));
+    }
+
+    return filteredPlayers;
   },
 
   notifySelectionChange(): void {

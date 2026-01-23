@@ -70,6 +70,7 @@ interface PlayerInfoModule {
   attachColorPickerHandlers(playerId: string): void;
   colorToHex(color: string): string;
   formatPlaytime(seconds?: number): string | null;
+  roundTimestampToMinute(timestamp: string): string;
   loadAndRenderInventory(): Promise<void>;
   renderCurrentInventory(inventory: InventoryItem[]): void;
   renderInventoryDiff(inventory: InventoryItem[]): void;
@@ -482,6 +483,15 @@ const PlayerInfo: PlayerInfoModule = {
     return `${minutes}m`;
   },
 
+  // Helper to round timestamp to nearest minute for grouping inventory snapshots
+  // Items from the same snapshot may be captured over several seconds, so we group by minute
+  roundTimestampToMinute(timestamp: string): string {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    date.setSeconds(0, 0); // Zero out seconds and milliseconds
+    return date.toISOString();
+  },
+
   async loadAndRenderInventory(): Promise<void> {
     const currentContainer = document.getElementById('current-inventory-table');
     const diffContainer = document.getElementById('inventory-diff-list');
@@ -493,23 +503,26 @@ const PlayerInfo: PlayerInfoModule = {
     if (diffContainer) diffContainer.innerHTML = '<div class="loading-text">Loading history...</div>';
 
     try {
-      // Get time range from TimeRange module
+      // Get time range from TimeRange module (for diff timeline only)
       const { start, end }: DateRange = window.TimeRange.getDateRange();
 
-      // Fetch inventory history
-      const inventory = await window.API.getPlayerInventory(
-        this.selectedPlayerId,
-        start.toISOString(),
-        end.toISOString()
-      );
+      // Fetch both: latest inventory (for current) and time-filtered (for changes)
+      // Current inventory: always show latest (last 24 hours to get most recent snapshot)
+      const now = new Date();
+      const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-      this.inventoryHistory = inventory;
+      const [latestInventory, filteredInventory] = await Promise.all([
+        window.API.getPlayerInventory(this.selectedPlayerId, last24h.toISOString(), now.toISOString()),
+        window.API.getPlayerInventory(this.selectedPlayerId, start.toISOString(), end.toISOString()),
+      ]);
 
-      // Render current inventory (most recent snapshot)
-      this.renderCurrentInventory(inventory);
+      this.inventoryHistory = filteredInventory;
 
-      // Render diff timeline
-      this.renderInventoryDiff(inventory);
+      // Render current inventory (always shows latest snapshot, ignores time filter)
+      this.renderCurrentInventory(latestInventory);
+
+      // Render diff timeline (respects time filter)
+      this.renderInventoryDiff(filteredInventory);
     } catch (error) {
       console.error('Failed to load inventory:', error);
       if (currentContainer) currentContainer.innerHTML = '<div class="error-text">Failed to load inventory</div>';
@@ -526,10 +539,11 @@ const PlayerInfo: PlayerInfoModule = {
       return;
     }
 
-    // Group by timestamp to get the most recent snapshot
+    // Group by timestamp (rounded to second) to get the most recent snapshot
+    // Rounding prevents items from the same snapshot with slightly different timestamps from being split
     const byTimestamp: Record<string, InventoryItem[]> = {};
     for (const item of inventory) {
-      const ts = item.createdAt || '';
+      const ts = this.roundTimestampToMinute(item.createdAt || '');
       if (!byTimestamp[ts]) byTimestamp[ts] = [];
       byTimestamp[ts].push(item);
     }
@@ -585,10 +599,10 @@ const PlayerInfo: PlayerInfoModule = {
       return;
     }
 
-    // Group by timestamp
+    // Group by timestamp (rounded to second) to properly group items from same snapshot
     const byTimestamp: Record<string, InventoryItem[]> = {};
     for (const item of inventory) {
-      const ts = item.createdAt || '';
+      const ts = this.roundTimestampToMinute(item.createdAt || '');
       if (!byTimestamp[ts]) byTimestamp[ts] = [];
       byTimestamp[ts].push(item);
     }

@@ -5,7 +5,7 @@ export const TTL = {
   GAME_SERVERS: 15 * 60, // 15 minutes
   MAP_INFO: 60 * 60, // 1 hour
   PLAYER_NAMES: 5 * 60, // 5 minutes
-  PLAYERS_LIST: 20, // 20 seconds (shorter for faster online player detection)
+  PLAYERS_LIST: 60, // 60 seconds (reduced API calls, data still reasonably fresh)
   MOVEMENT_PATHS: 5 * 60, // 5 minutes
   DEATH_EVENTS: 10 * 60, // 10 minutes
   AREA_SEARCH: 2 * 60, // 2 minutes
@@ -18,6 +18,8 @@ class Cache {
   private connected = false;
   private memoryCache: Map<string, CacheValue> = new Map();
   private memoryCacheTTL: Map<string, number> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private readonly MAX_CACHE_SIZE = 50;
 
   async connect(): Promise<boolean> {
     try {
@@ -49,7 +51,33 @@ class Cache {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.warn('Redis not available, using in-memory cache:', errorMessage);
       this.connected = false;
+      // Start cleanup interval for memory cache
+      this.startCleanupInterval();
       return false;
+    }
+  }
+
+  private startCleanupInterval(): void {
+    if (this.cleanupInterval) return;
+    this.cleanupInterval = setInterval(() => this.cleanupExpired(), 60000);
+  }
+
+  private cleanupExpired(): void {
+    const now = Date.now();
+    for (const [key, expiry] of this.memoryCacheTTL) {
+      if (now > expiry) {
+        this.memoryCache.delete(key);
+        this.memoryCacheTTL.delete(key);
+      }
+    }
+  }
+
+  private evictOldest(): void {
+    // Map maintains insertion order, first key is oldest (LRU)
+    const oldestKey = this.memoryCache.keys().next().value;
+    if (oldestKey) {
+      this.memoryCache.delete(oldestKey);
+      this.memoryCacheTTL.delete(oldestKey);
     }
   }
 
@@ -74,6 +102,11 @@ class Cache {
         if (entry !== undefined) {
           const ttl = this.memoryCacheTTL.get(key);
           if (ttl && Date.now() < ttl) {
+            // LRU: move to end by deleting and re-adding
+            this.memoryCache.delete(key);
+            this.memoryCacheTTL.delete(key);
+            this.memoryCache.set(key, entry);
+            this.memoryCacheTTL.set(key, ttl);
             console.log(`  ⚡ MEM CACHE HIT: ${key} (${Date.now() - start}ms)`);
             return entry as T;
           } else {
@@ -96,9 +129,15 @@ class Cache {
       if (this.connected && this.redis) {
         await this.redis.setEx(key, ttlSeconds, JSON.stringify(value));
       } else {
-        // Memory cache fallback
+        // Memory cache fallback with LRU eviction
+        // Evict oldest entries if at capacity
+        while (this.memoryCache.size >= this.MAX_CACHE_SIZE) {
+          this.evictOldest();
+        }
         this.memoryCache.set(key, value);
         this.memoryCacheTTL.set(key, Date.now() + ttlSeconds * 1000);
+        // Start cleanup interval if not running
+        this.startCleanupInterval();
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

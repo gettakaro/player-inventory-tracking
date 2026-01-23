@@ -79,6 +79,11 @@ export const GameMap = {
   worldSize: 6144,
   maxZoom: 4,
   tileSize: 128,
+  // Event handler references for cleanup
+  _handleMouseMove: null as ((e: L.LeafletMouseEvent) => void) | null,
+  _handleMoveEnd: null as (() => void) | null,
+  _handleZoomEnd: null as (() => void) | null,
+  _gridLayer: null as L.Polyline | null,
 
   // 7D2D coordinate conversion
   gameToLatLng(x: number, z: number): L.LatLng {
@@ -97,10 +102,12 @@ export const GameMap = {
     this.gameServerId = gameServerId;
 
     // Get map info from 7D2D server
+    let mapEnabled = true;
     try {
       const mapInfo: MapInfo = await window.API.getMapInfo(gameServerId);
       this.worldSize = mapInfo.worldSize || 6144;
       this.maxZoom = mapInfo.maxZoom || 4;
+      mapEnabled = (mapInfo as { enabled?: boolean }).enabled !== false;
     } catch (error) {
       console.warn('Could not get map info, using defaults:', error);
     }
@@ -136,22 +143,41 @@ export const GameMap = {
 
     this.tileLayer.addTo(this.map);
 
+    // Show warning if map tiles are disabled
+    if (!mapEnabled) {
+      console.warn('Map tiles are disabled for this game server');
+      const warningDiv = document.createElement('div');
+      warningDiv.className = 'map-warning';
+      warningDiv.innerHTML = `
+        <strong>Map tiles not available</strong><br>
+        <small>Map rendering is disabled for this server in Takaro settings.</small>
+      `;
+      warningDiv.style.cssText = `
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.8); color: #ff9800; padding: 20px; border-radius: 8px;
+        text-align: center; z-index: 1000; pointer-events: none;
+      `;
+      document.getElementById('map')?.appendChild(warningDiv);
+    }
+
     // Add grid overlay (optional)
     this.addGridLayer();
 
     // Add coordinate display on mouse move
-    this.map.on('mousemove', (e: L.LeafletMouseEvent) => {
+    this._handleMouseMove = (e: L.LeafletMouseEvent) => {
       const coords = this.latLngToGame(e.latlng);
       const cursorEl = document.getElementById('cursor-coords');
       if (cursorEl) {
         cursorEl.textContent = `X: ${coords.x}, Z: ${coords.z}`;
       }
-    });
+    };
+    this.map.on('mousemove', this._handleMouseMove);
 
     // Save map state on view change
-    this.map.on('moveend', () => {
+    this._handleMoveEnd = () => {
       this.saveState();
-    });
+    };
+    this.map.on('moveend', this._handleMoveEnd);
 
     // Restore saved state
     this.restoreState();
@@ -178,22 +204,24 @@ export const GameMap = {
       gridLines.push([this.gameToLatLng(-halfWorld, z), this.gameToLatLng(halfWorld, z)]);
     }
 
-    const gridLayer = L.polyline(gridLines, {
+    this._gridLayer = L.polyline(gridLines, {
       color: 'rgba(255, 255, 255, 0.1)',
       weight: 1,
       interactive: false,
     });
 
     const map = this.map;
+    const gridLayer = this._gridLayer;
 
     // Only show grid at lower zoom levels
-    map.on('zoomend', () => {
+    this._handleZoomEnd = () => {
       if (map.getZoom() < 3) {
         gridLayer.addTo(map);
       } else {
         gridLayer.remove();
       }
-    });
+    };
+    map.on('zoomend', this._handleZoomEnd);
 
     // Initially add if zoomed out
     if (map.getZoom() < 3) {
@@ -228,6 +256,23 @@ export const GameMap = {
 
   destroy(): void {
     if (this.map) {
+      // Unbind event listeners to prevent memory leaks
+      if (this._handleMouseMove) {
+        this.map.off('mousemove', this._handleMouseMove);
+        this._handleMouseMove = null;
+      }
+      if (this._handleMoveEnd) {
+        this.map.off('moveend', this._handleMoveEnd);
+        this._handleMoveEnd = null;
+      }
+      if (this._handleZoomEnd) {
+        this.map.off('zoomend', this._handleZoomEnd);
+        this._handleZoomEnd = null;
+      }
+      if (this._gridLayer) {
+        this._gridLayer.remove();
+        this._gridLayer = null;
+      }
       this.map.remove();
       this.map = null;
       this.tileLayer = null;

@@ -1,11 +1,15 @@
 // API client for backend communication
 
-// Loading state tracking
+// Loading state tracking (debounced to avoid DOM thrashing)
 let activeRequests = 0;
+let wasLoading = false;
 
 function updateLoadingIndicator(): void {
+  const isLoading = activeRequests > 0;
+  if (isLoading === wasLoading) return; // Skip if no state change
+  wasLoading = isLoading;
   const el = document.getElementById('loading-indicator');
-  if (el) el.classList.toggle('active', activeRequests > 0);
+  if (el) el.classList.toggle('active', isLoading);
 }
 
 import type {
@@ -170,6 +174,13 @@ export const API = {
     if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
     if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
     if (loadAll) url += '&loadAll=true';
+    const data = await this.request<ApiResponse<Player[]>>(url);
+    return data.data || [];
+  },
+
+  // Fast path: Get only online players (for progressive loading)
+  async getOnlinePlayers(gameServerId: string): Promise<Player[]> {
+    const url = `/api/players/online?gameServerId=${encodeURIComponent(gameServerId)}`;
     const data = await this.request<ApiResponse<Player[]>>(url);
     return data.data || [];
   },

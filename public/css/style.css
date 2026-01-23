@@ -544,17 +544,44 @@ body {
 /* Loading Indicator */
 .loading-indicator {
   display: none;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-right: 0.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  border-radius: 4px;
+  color: #ffc107;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
 }
 
 .loading-indicator.active {
-  display: inline-block;
+  display: inline-flex;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 4px;
+  background: rgba(255, 193, 7, 0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.loading-spinner::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 100%;
+  background: #ffc107;
+  border-radius: 2px;
+  animation: slide 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes slide {
+  from { left: 0; }
+  to { left: 12px; }
 }
 
 .app-version {
@@ -2196,13 +2223,14 @@ body {
   background: var(--primary);
 }
 
-.bottom-panel-actions {
+.bottom-panel-left-actions {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  flex-shrink: 0;
 }
 
-.bottom-panel-actions .btn-icon {
+.bottom-panel-left-actions .btn-icon {
   width: 32px;
   height: 32px;
   display: flex;

@@ -197,6 +197,7 @@ interface TakaroSDKClient {
       playerId: string;
       startDate: string;
       endDate: string;
+      limit?: number;
     }): Promise<{ data: { data: unknown[] } }>;
     trackingControllerGetPlayerMovementHistory(body: {
       playerId?: string[];
@@ -523,7 +524,7 @@ export class TakaroClient {
                 page,
                 limit,
               }),
-            100 // Page size
+            500 // Larger page size for fewer round trips
           );
           logApiCall('getPlayers (full list)', start, allPogs.length);
 
@@ -581,6 +582,49 @@ export class TakaroClient {
       const lastSeenTime = new Date(player.lastSeen).getTime();
       return lastSeenTime >= startTime && lastSeenTime <= endTime;
     });
+  }
+
+  // Fast path: fetch only online players (no pagination needed, smaller dataset)
+  async getOnlinePlayers(gameServerId: string): Promise<NormalizedPlayer[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    const cacheKey = cache.key('players-online', this.domain || 'service', gameServerId);
+    const cached = await cache.get<NormalizedPlayer[]>(cacheKey);
+    if (cached) {
+      console.log('  ⚡ Cache hit for online players');
+      return cached;
+    }
+
+    const start = Date.now();
+    console.log('  → Fetching online players only...');
+
+    const response = await this.client.playerOnGameserver.playerOnGameServerControllerSearch({
+      filters: {
+        gameServerId: [gameServerId],
+        online: [true],
+      } as { gameServerId: string[]; online?: boolean[] },
+      extend: ['player'],
+      limit: 500, // Online players typically < 100, but allow headroom
+    });
+
+    const players = (response.data.data || []).map((pog) => ({
+      id: pog.id,
+      playerId: pog.playerId,
+      name: pog.player?.name || 'Unknown',
+      steamId: pog.player?.steamId,
+      x: pog.positionX,
+      y: pog.positionY,
+      z: pog.positionZ,
+      ping: pog.ping,
+      currency: pog.currency,
+      playtimeSeconds: pog.playtimeSeconds,
+      lastSeen: pog.lastSeen,
+      online: true as const,
+    }));
+
+    logApiCall('getOnlinePlayers', start, players.length);
+    await cache.set(cacheKey, players, 30); // 30 second cache (matches auto-refresh)
+    return players;
   }
 
   async getPlayerList(_gameServerId: string): Promise<TakaroPlayer[]> {
@@ -774,9 +818,11 @@ export class TakaroClient {
       return data;
     } catch (error) {
       const axiosError = error as {
-        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        response?: { data?: { meta?: { error?: { message?: string } }; message?: string }; status?: number };
         message?: string;
       };
+      console.error('getMapInfo error:', JSON.stringify(axiosError.response?.data, null, 2));
+      console.error('getMapInfo status:', axiosError.response?.status);
       const message =
         axiosError.response?.data?.meta?.error?.message ||
         axiosError.response?.data?.message ||
@@ -798,8 +844,27 @@ export class TakaroClient {
       });
       return response.data;
     } catch (error) {
-      // Return null for missing tiles (404)
-      const axiosError = error as { response?: { status?: number } };
+      const axiosError = error as {
+        response?: {
+          status?: number;
+          data?: ArrayBuffer | { meta?: { error?: { message?: string } }; message?: string };
+        };
+        message?: string;
+      };
+
+      // Log the actual error from Takaro
+      console.error(`Map tile error (z=${z}, x=${x}, y=${y}):`, axiosError.response?.status);
+      if (axiosError.response?.data) {
+        // Try to parse error response (might be JSON or binary)
+        try {
+          const text = new TextDecoder().decode(axiosError.response.data as ArrayBuffer);
+          console.error('  Response:', text.slice(0, 500));
+        } catch {
+          console.error('  Response (binary):', axiosError.response.data);
+        }
+      }
+
+      // Return null for 404s (missing tiles)
       if (axiosError.response?.status === 404) {
         return null;
       }
@@ -820,13 +885,17 @@ export class TakaroClient {
         playerId,
         startDate: startDate || defaultStart.toISOString(),
         endDate: endDate || now.toISOString(),
+        limit: 50000, // High limit to ensure we get ALL inventory records
       };
 
+      console.log('  📦 Inventory API request:', JSON.stringify(body));
       const response = await this.client.tracking.trackingControllerGetPlayerInventoryHistory(body);
-      return response.data.data || [];
+      const data = response.data.data || [];
+      console.log(`  📦 Inventory API returned ${data.length} items for player ${playerId}`);
+      return data;
     } catch (error) {
       const axiosError = error as {
-        response?: { data?: { meta?: { error?: { message?: string } }; message?: string } };
+        response?: { data?: { meta?: { error?: { message?: string; details?: unknown[] } }; message?: string } };
         message?: string;
       };
       const message =
@@ -834,7 +903,7 @@ export class TakaroClient {
         axiosError.response?.data?.message ||
         axiosError.message ||
         'Failed to get inventory history';
-      console.error('Takaro inventory history API error:', axiosError.response?.data || axiosError.message);
+      console.error('Takaro inventory history API error:', JSON.stringify(axiosError.response?.data, null, 2));
       throw new Error(message);
     }
   }

@@ -98,14 +98,6 @@ export const App: AppModule = {
       });
     }
 
-    // Load All Players button (in player list panel)
-    const loadAllBtn = document.getElementById('load-all-players-btn');
-    if (loadAllBtn) {
-      loadAllBtn.addEventListener('click', async () => {
-        await window.Players.loadAllPlayers();
-      });
-    }
-
     // Playback controls
     const playbackBtn = document.getElementById('playback-btn');
     if (playbackBtn) {

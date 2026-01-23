@@ -507,12 +507,13 @@ const PlayerInfo: PlayerInfoModule = {
       const { start, end }: DateRange = window.TimeRange.getDateRange();
 
       // Fetch both: latest inventory (for current) and time-filtered (for changes)
-      // Current inventory: always show latest (last 24 hours to get most recent snapshot)
+      // Current inventory: fetch last 180 DAYS to capture ALL items (API returns change history, not snapshots)
+      // Items that haven't changed in this period won't appear, so we use a long window
       const now = new Date();
-      const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const last180Days = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
 
       const [latestInventory, filteredInventory] = await Promise.all([
-        window.API.getPlayerInventory(this.selectedPlayerId, last24h.toISOString(), now.toISOString()),
+        window.API.getPlayerInventory(this.selectedPlayerId, last180Days.toISOString(), now.toISOString()),
         window.API.getPlayerInventory(this.selectedPlayerId, start.toISOString(), end.toISOString()),
       ]);
 
@@ -534,28 +535,53 @@ const PlayerInfo: PlayerInfoModule = {
     const container = document.getElementById('current-inventory-table');
     if (!container) return;
 
+    console.log('[Inventory] Total records received:', inventory.length);
+
     if (!inventory || inventory.length === 0) {
       container.innerHTML = '<div class="inventory-empty">No inventory data available</div>';
       return;
     }
 
-    // Group by timestamp (rounded to second) to get the most recent snapshot
-    // Rounding prevents items from the same snapshot with slightly different timestamps from being split
-    const byTimestamp: Record<string, InventoryItem[]> = {};
+    // The API returns item CHANGES over time, not complete snapshots.
+    // To get current inventory, we need the LATEST state of each unique item.
+    // Group by itemId (or itemName+quality for items without ID), keep only most recent record per item
+    const latestByItem = new Map<string, InventoryItem>();
+
     for (const item of inventory) {
-      const ts = this.roundTimestampToMinute(item.createdAt || '');
-      if (!byTimestamp[ts]) byTimestamp[ts] = [];
-      byTimestamp[ts].push(item);
+      // Create unique key: itemId if available, otherwise itemName+quality
+      const key = item.itemId || `${item.itemName || item.itemCode}|${item.quality || ''}`;
+      const existing = latestByItem.get(key);
+
+      // Keep the most recent record for each item
+      if (!existing) {
+        latestByItem.set(key, item);
+      } else {
+        const existingTime = new Date(existing.createdAt || 0).getTime();
+        const newTime = new Date(item.createdAt || 0).getTime();
+        if (newTime > existingTime) {
+          latestByItem.set(key, item);
+        }
+      }
     }
 
-    const timestamps = Object.keys(byTimestamp).sort().reverse();
-    if (timestamps.length === 0) {
+    // Filter out items with quantity 0 (consumed/removed) and convert to array
+    const items = Array.from(latestByItem.values()).filter((item) => item.quantity > 0);
+    console.log('[Inventory] Unique items with qty > 0:', items.length);
+
+    if (items.length === 0) {
       container.innerHTML = '<div class="inventory-empty">No items in inventory</div>';
       return;
     }
 
-    const items = byTimestamp[timestamps[0]];
-    const snapshotTime = new Date(timestamps[0]).toLocaleString();
+    // Sort by item name for consistent display
+    items.sort((a, b) => (a.itemName || a.itemCode || '').localeCompare(b.itemName || b.itemCode || ''));
+
+    // Find the most recent timestamp for display
+    const mostRecentTime = items.reduce((latest, item) => {
+      const itemTime = new Date(item.createdAt || 0).getTime();
+      return itemTime > latest ? itemTime : latest;
+    }, 0);
+    const snapshotTime = new Date(mostRecentTime).toLocaleString();
 
     const rows = items
       .map((item) => {

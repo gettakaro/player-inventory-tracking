@@ -133,6 +133,10 @@
           <button id="item-search-btn" class="btn btn-secondary">
             &#128269; Search by Item
           </button>
+          <span id="loading-indicator" class="loading-indicator">
+            <span class="loading-spinner"></span>
+            Loading...
+          </span>
         </div>
 
       </div>
@@ -143,12 +147,8 @@
       <!-- Bottom Panel with Top-Level Tabs -->
       <div id="bottom-panel" class="bottom-panel" style="display: none;">
         <div class="bottom-panel-header">
-          <div class="bottom-panel-tabs">
-            <button class="top-tab-btn active" data-top-tab="player-info">Player Info</button>
-            <button class="top-tab-btn" data-top-tab="item-search">Item Search</button>
-            <button class="top-tab-btn" data-top-tab="area-search">Area Search</button>
-          </div>
-          <div class="bottom-panel-actions">
+          <div class="bottom-panel-left-actions">
+            <button id="close-bottom-panel" class="btn btn-icon btn-close-panel" title="Close">X</button>
             <button id="expand-bottom-panel" class="btn btn-icon" title="Expand panel">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="15 3 21 3 21 9"></polyline>
@@ -157,7 +157,11 @@
                 <line x1="3" y1="21" x2="10" y2="14"></line>
               </svg>
             </button>
-            <button id="close-bottom-panel" class="btn btn-icon" title="Close">&times;</button>
+          </div>
+          <div class="bottom-panel-tabs">
+            <button class="top-tab-btn active" data-top-tab="player-info">Player Info</button>
+            <button class="top-tab-btn" data-top-tab="item-search">Item Search</button>
+            <button class="top-tab-btn" data-top-tab="area-search">Area Search</button>
           </div>
         </div>
 
@@ -258,7 +262,6 @@
             <div class="player-selection-controls">
               <button id="select-all-btn" class="btn btn-sm">Select All</button>
               <button id="deselect-all-btn" class="btn btn-sm">Deselect All</button>
-              <button id="load-all-players-btn" class="btn btn-sm" title="Load all players (slow for large servers)">Load All</button>
             </div>
             <div class="player-list-stats">
               <span id="panel-selected-count">0 selected</span>
@@ -303,7 +306,6 @@
 
       <!-- Status Bar -->
       <div class="status-bar">
-        <span id="loading-indicator" class="loading-indicator"></span>
         <span id="player-count">Players: 0 online, 0 offline</span>
         <span id="cursor-coords">X: --, Z: --</span>
         <span id="last-update">Last update: --</span>

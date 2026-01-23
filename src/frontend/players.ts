@@ -133,13 +133,91 @@ export const Players = {
     `;
   },
 
+  // Internal helper to render players to the map (reused by progressive loading)
+  async renderPlayersToMap(
+    players: Player[],
+    currentIds: Set<string | number>,
+    startTime: number | null,
+    endTime: number | null
+  ): Promise<void> {
+    if (!window.GameMap.map) return;
+
+    const playersToRender: Array<{ player: Player; isOnline: boolean }> = [];
+
+    for (const player of players) {
+      const isOnline = player.online === 1 || player.online === true;
+
+      // Skip map marker if coordinates are invalid
+      if (player.x === null || player.z === null) continue;
+
+      // Skip based on visibility settings
+      if (isOnline && !this.showOnline) continue;
+      if (!isOnline && !this.showOffline) continue;
+
+      // Skip offline players outside time range
+      if (!isOnline && startTime && endTime && player.lastSeen) {
+        const lastSeenTime = new Date(player.lastSeen).getTime();
+        if (lastSeenTime < startTime || lastSeenTime > endTime) continue;
+      }
+
+      // Skip if player is not selected (only when selections exist)
+      if (this.selectedPlayers.size > 0 && !this.selectedPlayers.has(String(player.id))) {
+        continue;
+      }
+
+      playersToRender.push({ player, isOnline });
+    }
+
+    // Process markers in batches to avoid blocking UI
+    const BATCH_SIZE = 50;
+
+    for (let i = 0; i < playersToRender.length; i += BATCH_SIZE) {
+      const batch = playersToRender.slice(i, i + BATCH_SIZE);
+
+      for (const { player, isOnline } of batch) {
+        currentIds.add(player.id);
+        const pos = window.GameMap.gameToLatLng(player.x as number, player.z as number);
+
+        const existingMarker = this.markers.get(player.id);
+        if (existingMarker) {
+          // Update existing marker
+          existingMarker.setLatLng(pos);
+          existingMarker.setIcon(this.createIcon(isOnline, player.playerId));
+          existingMarker.getPopup()?.setContent(this.createPopupContent(player));
+        } else {
+          // Create new marker
+          const marker = L.marker(pos, {
+            icon: this.createIcon(isOnline, player.playerId),
+          });
+
+          marker.bindPopup(this.createPopupContent(player));
+          marker.on('click', () => {
+            if (window.PlayerInfo) {
+              window.PlayerInfo.showPlayer(player.playerId || player.id);
+            }
+          });
+
+          if (window.GameMap.map) {
+            marker.addTo(window.GameMap.map);
+          }
+          this.markers.set(player.id, marker);
+        }
+      }
+
+      // Yield to browser between batches
+      if (i + BATCH_SIZE < playersToRender.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  },
+
   async update(gameServerId: string): Promise<void> {
     if (!window.GameMap.map) return;
 
     this.gameServerId = gameServerId;
 
     try {
-      // Get time range for filtering - now passed to API for server-side filtering
+      // Get time range for filtering
       let startIso: string | undefined;
       let endIso: string | undefined;
       let startTime: number | null = null;
@@ -152,118 +230,55 @@ export const Players = {
         endTime = end.getTime();
       }
 
-      // Show loading indicator
       const playerCountEl = document.getElementById('player-count');
+      const currentIds = new Set<string | number>();
+
+      // STEP 1: Load and render ONLINE players first (fast path)
       if (playerCountEl) {
-        playerCountEl.textContent = 'Loading players...';
+        playerCountEl.textContent = 'Loading online players...';
       }
 
-      // Get players with server-side filtering by date range
-      const players: Player[] = await window.API.getPlayers(gameServerId, startIso, endIso);
+      const onlinePlayers = await window.API.getOnlinePlayers(gameServerId);
+      const onlineCount = onlinePlayers.length;
 
-      // Store for lookup by other modules (e.g., AreaSearch)
-      this.allPlayers = players;
+      // Render online players immediately
+      await this.renderPlayersToMap(onlinePlayers, currentIds, startTime, endTime);
 
-      // Track the loaded time range (for smart re-fetching when range expands)
+      // Update status to show online players loaded, offline loading
+      if (playerCountEl) {
+        playerCountEl.textContent = `Players: ${onlineCount} online, loading offline...`;
+      }
+
+      // STEP 2: Load ALL players (including offline) in background
+      const allPlayers: Player[] = await window.API.getPlayers(gameServerId, startIso, endIso);
+
+      // Store for lookup by other modules
+      this.allPlayers = allPlayers;
       this.loadedStartTime = startTime;
       this.loadedEndTime = endTime;
 
-      // Filter players for markers and count
-      const playersToRender: Array<{ player: Player; isOnline: boolean }> = [];
-      let onlineCount = 0;
-      let offlineCount = 0;
+      // Count offline players
+      const offlinePlayers = allPlayers.filter((p) => !(p.online === 1 || p.online === true));
+      const offlineCount = offlinePlayers.length;
 
-      for (const player of players) {
-        const isOnline = player.online === 1 || player.online === true;
+      // Render offline players
+      await this.renderPlayersToMap(offlinePlayers, currentIds, startTime, endTime);
 
-        // Count all players regardless of coordinates
-        if (isOnline) onlineCount++;
-        else offlineCount++;
-
-        // Skip map marker if coordinates are invalid (player still appears in list)
-        if (player.x === null || player.z === null) continue;
-
-        // Skip based on visibility settings
-        if (isOnline && !this.showOnline) continue;
-        if (!isOnline && !this.showOffline) continue;
-
-        // Skip offline players outside time range
-        if (!isOnline && startTime && endTime && player.lastSeen) {
-          const lastSeenTime = new Date(player.lastSeen).getTime();
-          if (lastSeenTime < startTime || lastSeenTime > endTime) continue;
-        }
-
-        // Skip if player is not selected (only when selections exist)
-        if (this.selectedPlayers.size > 0 && !this.selectedPlayers.has(String(player.id))) {
-          continue;
-        }
-
-        playersToRender.push({ player, isOnline });
-      }
-
-      // Update status immediately so user sees progress
+      // Final count update
       if (playerCountEl) {
         playerCountEl.textContent = `Players: ${onlineCount} online, ${offlineCount} offline`;
       }
 
-      // Sync with player list panel early (non-blocking for marker creation)
+      // Sync with player list panel
       if (window.PlayerList) {
         const needsRefresh = !window.PlayerList.hasInitializedSelection;
-        // Defer PlayerList update slightly to not block marker rendering
         setTimeout(() => {
-          window.PlayerList.updatePlayers(players);
+          window.PlayerList.updatePlayers(allPlayers);
           if (needsRefresh && window.PlayerList.selectedPlayers.size > 0) {
             this.selectedPlayers = window.PlayerList.selectedPlayers;
             this.refreshVisibility();
           }
         }, 0);
-      }
-
-      // Process markers in batches to avoid blocking UI
-      const BATCH_SIZE = 50;
-      const currentIds = new Set<string | number>();
-
-      for (let i = 0; i < playersToRender.length; i += BATCH_SIZE) {
-        const batch = playersToRender.slice(i, i + BATCH_SIZE);
-
-        for (const { player, isOnline } of batch) {
-          currentIds.add(player.id);
-          // player.x and player.z are guaranteed to be non-null here (filtered earlier)
-          const pos = window.GameMap.gameToLatLng(player.x as number, player.z as number);
-
-          const existingMarker = this.markers.get(player.id);
-          if (existingMarker) {
-            // Update existing marker
-            const marker = existingMarker;
-            marker.setLatLng(pos);
-            marker.setIcon(this.createIcon(isOnline, player.playerId));
-            marker.getPopup()?.setContent(this.createPopupContent(player));
-          } else {
-            // Create new marker
-            const marker = L.marker(pos, {
-              icon: this.createIcon(isOnline, player.playerId),
-            });
-
-            marker.bindPopup(this.createPopupContent(player));
-
-            // Add click handler to show player info panel
-            marker.on('click', () => {
-              if (window.PlayerInfo) {
-                window.PlayerInfo.showPlayer(player.playerId || player.id);
-              }
-            });
-
-            if (window.GameMap.map) {
-              marker.addTo(window.GameMap.map);
-            }
-            this.markers.set(player.id, marker);
-          }
-        }
-
-        // Yield to browser between batches (allows UI to update/respond)
-        if (i + BATCH_SIZE < playersToRender.length) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
       }
 
       // Remove markers for players no longer in list
@@ -398,66 +413,6 @@ export const Players = {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
       this.refreshInterval = null;
-    }
-  },
-
-  // Load ALL players (slow for large servers, but complete)
-  async loadAllPlayers(): Promise<void> {
-    if (!this.gameServerId || !window.GameMap.map) return;
-
-    const btn = document.getElementById('load-all-players-btn') as HTMLButtonElement | null;
-    const playerCountEl = document.getElementById('player-count');
-
-    try {
-      // Update UI to show loading
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Loading...';
-      }
-      if (playerCountEl) {
-        playerCountEl.textContent = 'Loading all players (this may take a while)...';
-      }
-
-      // Fetch ALL players
-      const players: Player[] = await window.API.getPlayers(this.gameServerId, undefined, undefined, true);
-
-      // Store for lookup by other modules
-      this.allPlayers = players;
-
-      // Mark as fully loaded - no time range restrictions
-      this.loadedStartTime = -Infinity;
-      this.loadedEndTime = Infinity;
-
-      // Count players
-      let onlineCount = 0;
-      let offlineCount = 0;
-      for (const player of players) {
-        if (player.online === 1 || player.online === true) onlineCount++;
-        else offlineCount++;
-      }
-
-      // Update status
-      if (playerCountEl) {
-        playerCountEl.textContent = `Players: ${onlineCount} online, ${offlineCount} offline (ALL loaded)`;
-      }
-
-      // Sync with player list panel
-      if (window.PlayerList) {
-        window.PlayerList.updatePlayers(players);
-      }
-
-      // Refresh map markers
-      this.refreshVisibility();
-    } catch (error) {
-      console.error('Failed to load all players:', error);
-      if (playerCountEl) {
-        playerCountEl.textContent = 'Failed to load all players';
-      }
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Load All';
-      }
     }
   },
 

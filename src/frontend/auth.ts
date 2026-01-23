@@ -32,7 +32,7 @@ export const Auth = {
             window.API.setDomain(status.domain);
             this.currentDomain = status.domain;
           }
-          this.showLoggedInState('Service Mode');
+          this.showLoggedInState();
           // Initialize domain switcher (will be hidden in service mode)
           window.DomainSwitcher.init([], this.currentDomain, true);
         } else {
@@ -49,7 +49,7 @@ export const Auth = {
             window.API.setDomain(status.domain);
             this.currentDomain = status.domain;
           }
-          this.showLoggedInState('Cookie Mode');
+          this.showLoggedInState();
           // Initialize domain switcher for cookie mode
           window.DomainSwitcher.init(this.availableDomains, this.currentDomain, false);
         }
@@ -159,14 +159,14 @@ export const Auth = {
     }
   },
 
-  showLoggedInState(modeLabel: string): void {
+  showLoggedInState(): void {
     const configPanel = document.getElementById('config-panel');
     const connectionStatus = document.getElementById('connection-status');
 
     if (configPanel) configPanel.style.display = 'block';
     if (connectionStatus) {
       connectionStatus.className = 'status-indicator online';
-      connectionStatus.textContent = `Connected (${modeLabel})`;
+      connectionStatus.textContent = 'Connected';
     }
   },
 

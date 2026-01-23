@@ -346,6 +346,14 @@ app.get(
         res.status(204).send();
       }
     } catch (error) {
+      // Check if it's a Takaro API error (map disabled or other issue)
+      const axiosError = error as { response?: { status?: number } };
+      if (axiosError.response?.status === 500) {
+        // Takaro returns 500 when maps are disabled - return 204 (no content) gracefully
+        console.warn(`  ⚠️ Map tile unavailable (z=${z}, x=${x}, y=${y}) - map may be disabled`);
+        res.status(204).send();
+        return;
+      }
       res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
     }
   }
@@ -381,6 +389,27 @@ app.get('/api/players', requireAuth as express.RequestHandler, async (req: Authe
     res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
+
+// Get only online players (fast path for initial load)
+app.get(
+  '/api/players/online',
+  requireAuth as express.RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { gameServerId } = req.query;
+
+    if (!gameServerId) {
+      res.status(400).json({ error: 'gameServerId required' });
+      return;
+    }
+
+    try {
+      const players = await req.session?.takaroClient.getOnlinePlayers(gameServerId as string);
+      res.json({ data: players });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+);
 
 // Get player inventory history (from Takaro tracking API)
 app.get(

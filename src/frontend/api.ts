@@ -1,5 +1,13 @@
 // API client for backend communication
 
+// Loading state tracking
+let activeRequests = 0;
+
+function updateLoadingIndicator(): void {
+  const el = document.getElementById('loading-indicator');
+  if (el) el.classList.toggle('active', activeRequests > 0);
+}
+
 import type {
   AreaSearchResult,
   AuthStatus,
@@ -63,50 +71,66 @@ export const API = {
   },
 
   async request<T>(url: string, options: RequestOptions = {}): Promise<T> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+    activeRequests++;
+    updateLoadingIndicator();
 
-    if (this.sessionId) {
-      headers['X-Session-ID'] = this.sessionId;
-    }
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      };
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: 'include', // Include cookies for cookie mode auth
-    });
-
-    if (response.status === 401) {
-      const data = (await response.json().catch(() => ({}))) as ErrorResponse;
-
-      // Handle cookie mode session expiration
-      if (data.needsLogin && data.loginUrl) {
-        if (confirm('Your session has expired. Would you like to log in again?')) {
-          window.open(data.loginUrl, '_blank');
-        }
+      if (this.sessionId) {
+        headers['X-Session-ID'] = this.sessionId;
       }
 
-      this.clearSession();
-      throw new Error(data.error || 'Session expired');
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include', // Include cookies for cookie mode auth
+      });
+
+      if (response.status === 401) {
+        const data = (await response.json().catch(() => ({}))) as ErrorResponse;
+
+        // Handle cookie mode session expiration
+        if (data.needsLogin && data.loginUrl) {
+          if (confirm('Your session has expired. Would you like to log in again?')) {
+            window.open(data.loginUrl, '_blank');
+          }
+        }
+
+        this.clearSession();
+        throw new Error(data.error || 'Session expired');
+      }
+
+      const data = (await response.json().catch(() => ({}))) as T | ErrorResponse;
+
+      if (!response.ok) {
+        throw new Error((data as ErrorResponse).error || 'Request failed');
+      }
+
+      return data as T;
+    } finally {
+      activeRequests = Math.max(0, activeRequests - 1);
+      updateLoadingIndicator();
     }
-
-    const data = (await response.json().catch(() => ({}))) as T | ErrorResponse;
-
-    if (!response.ok) {
-      throw new Error((data as ErrorResponse).error || 'Request failed');
-    }
-
-    return data as T;
   },
 
   // Check auth status (for both service mode and cookie mode)
   async getAuthStatus(): Promise<AuthStatus> {
-    const response = await fetch('/api/auth/status', {
-      credentials: 'include', // Include cookies for cookie mode auth
-    });
-    return await response.json();
+    activeRequests++;
+    updateLoadingIndicator();
+
+    try {
+      const response = await fetch('/api/auth/status', {
+        credentials: 'include', // Include cookies for cookie mode auth
+      });
+      return await response.json();
+    } finally {
+      activeRequests = Math.max(0, activeRequests - 1);
+      updateLoadingIndicator();
+    }
   },
 
   // Get available domains (for cookie mode domain selector)

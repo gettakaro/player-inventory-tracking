@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Takaro 7D2D Player Map</title>
+  <title>Takaro 7 Days to Die Player Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <link rel="stylesheet" href="css/style.css" />
@@ -12,7 +12,7 @@
   <div id="app">
     <!-- Header -->
     <header class="header">
-      <h1>Takaro 7D2D Player Map</h1>
+      <h1>Takaro 7 Days to Die Player Map</h1>
       <div class="header-controls">
         <span id="app-version" class="app-version"></span>
         <select id="domain-selector" class="domain-selector" style="display: none;"></select>
@@ -303,6 +303,7 @@
 
       <!-- Status Bar -->
       <div class="status-bar">
+        <span id="loading-indicator" class="loading-indicator"></span>
         <span id="player-count">Players: 0 online, 0 offline</span>
         <span id="cursor-coords">X: --, Z: --</span>
         <span id="last-update">Last update: --</span>

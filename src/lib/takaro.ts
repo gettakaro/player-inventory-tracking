@@ -885,7 +885,6 @@ export class TakaroClient {
         playerId,
         startDate: startDate || defaultStart.toISOString(),
         endDate: endDate || now.toISOString(),
-        limit: 50000, // High limit to ensure we get ALL inventory records
       };
 
       console.log('  📦 Inventory API request:', JSON.stringify(body));

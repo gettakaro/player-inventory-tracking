@@ -136,7 +136,8 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG="$GITHUB_REF_NAME"
+            # Strip 'v' prefix to match docker/metadata-action semver pattern
+            TAG="${GITHUB_REF_NAME#v}"
           elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
             TAG="latest"
           else

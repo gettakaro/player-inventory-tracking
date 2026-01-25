@@ -107,6 +107,7 @@ declare global {
     API: typeof import('./api').API;
     Auth: typeof import('./auth').Auth;
     DomainSwitcher: typeof import('./domainSwitcher').DomainSwitcher;
+    ServerSwitcher: typeof import('./serverSwitcher').ServerSwitcher;
     GameMap: typeof import('./map').GameMap;
     Players: typeof import('./players').Players;
     PlayerList: typeof import('./playerList').PlayerList;

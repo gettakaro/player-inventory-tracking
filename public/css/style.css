@@ -76,6 +76,27 @@ body {
   border-color: var(--primary);
 }
 
+/* Server Switcher */
+.server-switcher {
+  padding: 0.35rem 0.6rem;
+  background: var(--darker);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: var(--light);
+  font-size: 0.85rem;
+  cursor: pointer;
+  max-width: 220px;
+}
+
+.server-switcher:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.server-switcher:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
 /* Status Indicator */
 .status-indicator {
   display: flex;

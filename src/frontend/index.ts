@@ -13,6 +13,7 @@ import { GameMap } from './map.js';
 import { PlayerInfo } from './playerInfo.js';
 import { PlayerList } from './playerList.js';
 import { Players } from './players.js';
+import { ServerSwitcher } from './serverSwitcher.js';
 import { TimeRange } from './timeRange.js';
 
 // Export all modules to window for global access
@@ -20,6 +21,7 @@ window.ColorUtils = ColorUtils;
 window.API = API;
 window.Auth = Auth;
 window.DomainSwitcher = DomainSwitcher;
+window.ServerSwitcher = ServerSwitcher;
 window.TimeRange = TimeRange;
 window.GameMap = GameMap;
 window.Players = Players;

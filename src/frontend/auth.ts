@@ -188,6 +188,9 @@ export const Auth = {
 
     if (configPanel) configPanel.style.display = 'none';
     if (mapContainer) mapContainer.style.display = 'flex';
+
+    // Show server switcher in header when viewing map
+    window.ServerSwitcher.show();
   },
 
   async loadGameServers(): Promise<void> {
@@ -211,6 +214,9 @@ export const Auth = {
         select.appendChild(option);
       });
 
+      // Initialize server switcher (hidden until map view is shown)
+      window.ServerSwitcher.init(servers, null);
+
       // Auto-select first server if only one
       if (servers.length === 1) {
         select.value = servers[0].id;
@@ -232,6 +238,9 @@ export const Auth = {
 
     // Find the server
     const server = this.servers?.find((s) => s.id === serverId);
+
+    // Update server switcher selection
+    window.ServerSwitcher.updateSelection(serverId);
 
     // Show start button directly - no config needed!
     if (startBtn) startBtn.style.display = 'block';

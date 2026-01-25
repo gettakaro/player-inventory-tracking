@@ -186,13 +186,29 @@ app.get('/api/auth/status', async (req: Request, res: Response) => {
       }
     }
 
+    // Validate that the domain cookie is valid (exists in user's available domains)
+    let validatedDomain = domainId;
+    if (domainId && domains.length > 0) {
+      const domainExists = domains.some((d) => d.id === domainId);
+      if (!domainExists) {
+        console.warn('[Auth] Domain cookie is stale/invalid, clearing:', domainId);
+        validatedDomain = null;
+        // Clear the invalid cookie
+        res.clearCookie('takaro-domain');
+      }
+    }
+
+    // If user has multiple domains but none selected, force selection
+    const needsDomainSelection = isValid && domains.length > 1 && !validatedDomain;
+
     res.json({
       mode: 'cookie',
       serviceMode: false,
       authenticated: isValid,
-      domain: domainId,
+      domain: validatedDomain,
       availableDomains: domains,
       needsLogin: !isValid,
+      needsDomainSelection,
       loginUrl: dashboardUrl,
       dashboardUrl,
     });

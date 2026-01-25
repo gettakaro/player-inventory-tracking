@@ -39,9 +39,21 @@ export const Auth = {
           // Cookie mode - already authenticated via cookies
           this.availableDomains = status.availableDomains || [];
 
-          if (!status.domain && this.availableDomains.length > 0) {
-            // No domain selected - show domain selector
+          // Check if domain selection is needed:
+          // 1. User has multiple domains AND no valid domain selected
+          // 2. Or backend explicitly says domain selection is needed
+          const needsDomainSelection =
+            status.needsDomainSelection || (!status.domain && this.availableDomains.length > 1);
+
+          if (needsDomainSelection) {
             this.showDomainSelector();
+            return true;
+          }
+
+          // If only one domain available, auto-select it
+          if (!status.domain && this.availableDomains.length === 1) {
+            await window.API.selectDomain(this.availableDomains[0].id);
+            location.reload();
             return true;
           }
 

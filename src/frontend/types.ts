@@ -82,6 +82,7 @@ export interface AuthStatus {
   sessionId?: string | null;
   availableDomains?: Array<{ id: string; name: string }>;
   needsLogin?: boolean;
+  needsDomainSelection?: boolean;
   loginUrl?: string;
   dashboardUrl?: string;
 }

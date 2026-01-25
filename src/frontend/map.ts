@@ -1,4 +1,4 @@
-// Leaflet map setup with 7D2D coordinate system
+// Leaflet map setup with game coordinate system (currently supports 7 Days to Die)
 
 import type { MapInfo } from './types.js';
 
@@ -10,7 +10,7 @@ interface CustomCRS extends L.CRS {
   zoom: (scale: number) => number;
 }
 
-// Custom CRS with proper scaling for 7D2D tile system
+// Custom CRS with proper scaling for game tile system
 // At zoom 4: scale = 128 (1 tile = 1 lat/lng unit)
 // At zoom 0: scale = 8 (1 tile = 16 lat/lng units)
 const SDTD_CRS: CustomCRS = L.extend({}, L.CRS.Simple, {
@@ -20,7 +20,7 @@ const SDTD_CRS: CustomCRS = L.extend({}, L.CRS.Simple, {
   zoom: (scale: number): number => Math.log(scale) / Math.LN2 - 3,
 }) as CustomCRS;
 
-// Custom GridLayer for 7D2D that handles centered coordinate system
+// Custom GridLayer that handles centered coordinate system
 interface SDTDGridLayerOptions extends L.GridLayerOptions {
   baseUrl: string;
 }
@@ -33,9 +33,9 @@ const SDTDGridLayer = L.GridLayer.extend({
   ): HTMLImageElement {
     const tile = document.createElement('img');
 
-    // Convert Leaflet tile coords to Takaro/7D2D tile coords
+    // Convert Leaflet tile coords to Takaro tile coords
     // Takaro uses centered coordinates where (0,0) is world center
-    // Y axis is flipped between Leaflet and 7D2D
+    // Y axis is flipped between Leaflet and game coordinates
     const x = coords.x;
     const y = -coords.y - 1;
 
@@ -85,7 +85,7 @@ export const GameMap = {
   _handleZoomEnd: null as (() => void) | null,
   _gridLayer: null as L.Polyline | null,
 
-  // 7D2D coordinate conversion
+  // Game coordinate conversion
   gameToLatLng(x: number, z: number): L.LatLng {
     // Convert game coords to lat/lng (scaled to tile system)
     return L.latLng(z / this.tileSize, x / this.tileSize);
@@ -101,7 +101,7 @@ export const GameMap = {
   async init(gameServerId: string): Promise<L.Map> {
     this.gameServerId = gameServerId;
 
-    // Get map info from 7D2D server
+    // Get map info from game server
     let mapEnabled = true;
     try {
       const mapInfo: MapInfo = await window.API.getMapInfo(gameServerId);
@@ -128,7 +128,7 @@ export const GameMap = {
     // Set initial view to center (0,0 in tile coords)
     this.map.setView([0, 0], 0);
 
-    // Add custom tile layer for 7D2D (cookies handle auth, no session param needed)
+    // Add custom tile layer (cookies handle auth, no session param needed)
     const tileUrl = window.API.getMapTileUrl(gameServerId);
     this.tileLayer = createSDTDGridLayer({
       baseUrl: tileUrl,

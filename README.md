@@ -1,27 +1,30 @@
-# Takaro Player Inventory Tracking
+# Takaro Player & Inventory Tracker
 
-A standalone web application for 7 Days to Die server admins to visualize player positions on their game map, with movement history tracking and playback.
+A standalone web application for game server admins to track player positions and inventory, with movement history tracking and playback.
+
+**Note:** Inventory tracking works for all Takaro-supported games. Map visualization currently supports 7 Days to Die only.
 
 ## Features
 
-- **Interactive Map**: View your 7D2D server map with Leaflet.js
+- **Interactive Map**: View your game server map with Leaflet.js *(7 Days to Die only)*
+- **Inventory Tracking**: View current inventory and historical changes for any player
 - **Real-time Player Tracking**: See online player positions with 30-second updates
 - **Offline Player Positions**: View last known positions of offline players
 - **Movement History**: Track and visualize player movement paths over time
 - **History Playback**: Animate player movements with play/pause controls
-- **Time-based Filtering**: Filter movement data by time range (1h, 6h, 24h, 1 week)
-- **Multi-Server Support**: Save configurations for multiple 7D2D servers
+- **Time-based Filtering**: Filter data by time range (1h, 6h, 24h, 1 week)
+- **Multi-Server Support**: Save configurations for multiple game servers
 
 ## Requirements
 
 - Node.js 18+
-- A Takaro account with connected 7D2D server
-- 7D2D server with web API enabled (Alloc's fixes for A20 and below, or native A21+)
-- 7D2D server with map rendering enabled (see below)
+- A Takaro account with connected game server
 
-### 7 Days to Die Server Configuration
+### Map Feature (7 Days to Die only)
 
-For map tiles to work, your game server must have map rendering enabled in `serverconfig.xml`:
+For map tiles to work with 7 Days to Die, your server must have:
+- Web API enabled (Alloc's fixes for A20 and below, or native A21+)
+- Map rendering enabled in `serverconfig.xml`:
 
 ```xml
 <property name="EnableMapRendering" value="true"/>
@@ -55,11 +58,11 @@ For map tiles to work, your game server must have map rendering enabled in `serv
 
 1. Enter your Takaro domain (e.g., if your dashboard is at `myserver.takaro.io`, enter `myserver`)
 2. Enter your Takaro email and password
-3. Select your 7D2D game server from the dropdown
+3. Select your game server from the dropdown
 
-### 7D2D Web API Connection
+### 7 Days to Die Web API Connection (for map feature)
 
-You need to configure the connection to your 7D2D server's web API:
+To enable map tiles for 7 Days to Die, configure the connection to your server's web API:
 
 1. **Host**: Your 7D2D server IP address or hostname
 2. **Port**: The web API port (default: 8082, check your server startup logs)
@@ -67,7 +70,7 @@ You need to configure the connection to your 7D2D server's web API:
 4. **Token Secret**: The corresponding token secret
 5. **World Size**: Optional - defaults to 8192, change if your world is different
 
-#### Creating Web Tokens on Your 7D2D Server
+#### Creating Web Tokens on Your 7 Days to Die Server
 
 SSH into your server and run these console commands:
 
